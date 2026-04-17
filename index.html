@@ -313,7 +313,7 @@
 
     async function load() {
       try {
-        var res = await fetch('generated.json');
+        var res = await fetch('games.json');
         if (!res.ok) throw new Error('HTTP ' + res.status);
         var games = await res.json();
         allGames = games;
@@ -328,7 +328,7 @@
         renderPage(1);
       } catch (e) {
         console.error('Load failed:', e);
-        document.getElementById('games').innerHTML = '<p class="empty">⚠ Could not load games. Check that generated.json exists and is valid JSON.</p>';
+        document.getElementById('games').innerHTML = '<p class="empty">⚠ Could not load games. Check that games.json exists and is valid JSON.</p>';
         document.getElementById('featured-section').style.display = 'none';
       }
     }
