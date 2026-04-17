@@ -28,7 +28,7 @@
     header::before {
       content: '';
       position: absolute;
-      top: 0; left: 0; right: 0; bottom: 0;
+      inset: 0;
       background:
         radial-gradient(ellipse 80% 60% at 50% -10%, rgba(0,229,255,0.08) 0%, transparent 70%),
         radial-gradient(ellipse 40% 40% at 20% 110%, rgba(255,45,120,0.06) 0%, transparent 70%);
@@ -36,7 +36,7 @@
     }
     .scanlines {
       position: absolute;
-      top: 0; left: 0; right: 0; bottom: 0;
+      inset: 0;
       background: repeating-linear-gradient(0deg, transparent, transparent 3px, rgba(0,0,0,0.07) 3px, rgba(0,0,0,0.07) 4px);
       pointer-events: none;
       z-index: 1;
@@ -106,7 +106,6 @@
       border-color: #00e5ff;
       box-shadow: 0 0 16px rgba(0,229,255,0.25);
     }
-    .card:active { transform: translateY(-1px); }
 
     .thumb {
       width: 100%;
@@ -153,11 +152,11 @@
     .pagination {
       display: flex;
       justify-content: center;
-      align-items: center;
       gap: 8px;
       margin-top: 36px;
       flex-wrap: wrap;
     }
+
     .page-btn {
       font-family: 'Press Start 2P', monospace;
       font-size: 0.55rem;
@@ -167,14 +166,13 @@
       border-radius: 6px;
       padding: 9px 12px;
       cursor: pointer;
-      transition: background 0.15s, color 0.15s, border-color 0.15s, box-shadow 0.15s;
-      min-width: 36px;
-      text-align: center;
-      line-height: 1;
     }
-    .page-btn:hover { background: #12121a; color: #e8e8f0; border-color: #00e5ff; }
-    .page-btn.active { background: #00e5ff; color: #000; border-color: #00e5ff; box-shadow: 0 0 12px rgba(0,229,255,0.4); }
-    .page-btn:disabled { opacity: 0.3; cursor: default; pointer-events: none; }
+
+    .page-btn.active {
+      background: #00e5ff;
+      color: #000;
+      border-color: #00e5ff;
+    }
 
     .empty {
       text-align: center;
@@ -185,156 +183,146 @@
     }
   </style>
 </head>
-<body style="background:#0a0a0f; color:#e8e8f0;">
+<body>
 
-  <header>
-    <div class="scanlines"></div>
-    <div class="header-inner">
-      <h1>🎮 Game Hub</h1>
-      <p class="subtitle">Pick your game. Start playing.</p>
-    </div>
-  </header>
+<header>
+  <div class="scanlines"></div>
+  <div class="header-inner">
+    <h1>🎮 Game Hub</h1>
+    <p class="subtitle">Pick your game. Start playing.</p>
+  </div>
+</header>
 
-  <main style="max-width:1100px; margin:0 auto; padding:48px 24px 64px;">
+<main>
 
-    <section id="featured-section">
-      <p class="section-label"><span class="star">⭐</span> Featured</p>
-      <div id="featured" class="featured-grid"></div>
-    </section>
+  <section id="featured-section">
+    <p class="section-label"><span class="star">⭐</span> Featured</p>
+    <div id="featured" class="featured-grid"></div>
+  </section>
 
-    <section id="all-section" style="margin-top:56px;">
-      <p class="section-label">All Games</p>
-      <div id="games" class="games-grid" style="display:grid; grid-template-columns:repeat(3,1fr); gap:20px;"></div>
-      <div id="pagination" class="pagination"></div>
-    </section>
+  <section id="all-section">
+    <p class="section-label">All Games</p>
+    <div id="games" class="games-grid"></div>
+    <div id="pagination" class="pagination"></div>
+  </section>
 
-  </main>
+</main>
 
-  <script>
-    var PER_PAGE = 6;
-    var allGames = [];
-    var page = 1;
+<script>
+var PER_PAGE = 6;
+var allGames = [];
+var page = 1;
 
-    function placeholder() {
-      var d = document.createElement('div');
-      d.className = 'thumb-placeholder';
-      d.textContent = '🎮';
-      return d;
-    }
+function placeholder() {
+  var d = document.createElement('div');
+  d.className = 'thumb-placeholder';
+  d.textContent = '🎮';
+  return d;
+}
 
-    function makeCard(game, featured) {
-      var card = document.createElement('div');
-      card.className = 'card';
-      card.style.cssText = 'background:#16161f;border:1px solid #2a2a3a;border-radius:12px;overflow:hidden;cursor:pointer;position:relative;display:block;';
-      card.setAttribute('tabindex', '0');
+function makeCard(game, featured) {
+  var card = document.createElement('div');
+  card.className = 'card';
 
-      if (featured) {
-        var badge = document.createElement('span');
-        badge.className = 'featured-badge';
-        badge.textContent = '★ featured';
-        card.appendChild(badge);
-      }
+  if (featured) {
+    var badge = document.createElement('span');
+    badge.className = 'featured-badge';
+    badge.textContent = '★ featured';
+    card.appendChild(badge);
+  }
 
-      if (game.image) {
-        var img = document.createElement('img');
-        img.className = 'thumb';
-        img.style.cssText = 'width:100%;height:130px;object-fit:cover;display:block;background:#12121a;';
-        img.src = game.image;
-        img.alt = game.name;
-        img.onerror = function() { this.replaceWith(placeholder()); };
-        card.appendChild(img);
-      } else {
-        card.appendChild(placeholder());
-      }
+  if (game.image) {
+    var img = document.createElement('img');
+    img.className = 'thumb';
+    img.src = game.image;
+    img.alt = game.name;
+    img.onerror = function() { this.replaceWith(placeholder()); };
+    card.appendChild(img);
+  } else {
+    card.appendChild(placeholder());
+  }
 
-      var body = document.createElement('div');
-      body.className = 'card-body';
-      body.style.cssText = 'padding:12px 14px 14px;';
-      var title = document.createElement('div');
-      title.className = 'card-title';
-      title.style.cssText = 'font-size:0.88rem;font-weight:700;color:#e8e8f0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;';
-      title.textContent = game.name;
-      body.appendChild(title);
-      card.appendChild(body);
+  var body = document.createElement('div');
+  body.className = 'card-body';
 
-      card.addEventListener('mouseover', function() {
-        this.style.borderColor = '#00e5ff';
-        this.style.transform = 'translateY(-4px) scale(1.02)';
-        this.style.boxShadow = '0 0 16px rgba(0,229,255,0.25)';
+  var title = document.createElement('div');
+  title.className = 'card-title';
+  title.textContent = game.name;
+
+  body.appendChild(title);
+  card.appendChild(body);
+
+  card.onclick = function() { window.location.href = game.file; };
+  return card;
+}
+
+function renderPage(p) {
+  page = p;
+  var container = document.getElementById('games');
+  container.innerHTML = '';
+
+  var slice = allGames.slice((p - 1) * PER_PAGE, p * PER_PAGE);
+
+  if (!slice.length) {
+    container.innerHTML = '<p class="empty">No games found.</p>';
+  } else {
+    slice.forEach(function(g) {
+      container.appendChild(makeCard(g, false));
+    });
+  }
+
+  renderPager();
+}
+
+function renderPager() {
+  var container = document.getElementById('pagination');
+  container.innerHTML = '';
+  var total = Math.ceil(allGames.length / PER_PAGE);
+
+  for (var i = 1; i <= total; i++) {
+    (function(n) {
+      var b = document.createElement('button');
+      b.className = 'page-btn' + (n === page ? ' active' : '');
+      b.textContent = n;
+      b.onclick = function() { renderPage(n); };
+      container.appendChild(b);
+    })(i);
+  }
+}
+
+async function load() {
+  try {
+    var res = await fetch('games.json');
+    var games = await res.json();
+    allGames = games;
+
+    var fc = document.getElementById('featured');
+
+    // ✅ FIX: clear container
+    fc.innerHTML = '';
+
+    var featured = games.filter(function(g) {
+      return g.featured === true;
+    });
+
+    if (!featured.length) {
+      document.getElementById('featured-section').style.display = 'none';
+    } else {
+      document.getElementById('featured-section').style.display = '';
+      featured.forEach(function(g) {
+        fc.appendChild(makeCard(g, true));
       });
-      card.addEventListener('mouseout', function() {
-        this.style.borderColor = '#2a2a3a';
-        this.style.transform = '';
-        this.style.boxShadow = '';
-      });
-
-      var go = function() { window.location.href = game.file; };
-      card.addEventListener('click', go);
-      card.addEventListener('keydown', function(e) { if (e.key === 'Enter' || e.key === ' ') go(); });
-      return card;
     }
 
-    function renderPage(p) {
-      page = p;
-      var container = document.getElementById('games');
-      container.innerHTML = '';
-      var slice = allGames.slice((p - 1) * PER_PAGE, p * PER_PAGE);
-      if (!slice.length) {
-        container.innerHTML = '<p class="empty">No games found.</p>';
-      } else {
-        slice.forEach(function(g) { container.appendChild(makeCard(g, false)); });
-      }
-      renderPager();
-    }
+    renderPage(1);
 
-    function renderPager() {
-      var container = document.getElementById('pagination');
-      container.innerHTML = '';
-      var total = Math.ceil(allGames.length / PER_PAGE);
-      if (total <= 1) return;
+  } catch (e) {
+    console.error(e);
+  }
+}
 
-      function btn(label, disabled, active, onClick) {
-        var b = document.createElement('button');
-        b.className = 'page-btn' + (active ? ' active' : '');
-        b.textContent = label;
-        b.disabled = disabled;
-        b.addEventListener('click', onClick);
-        return b;
-      }
-
-      container.appendChild(btn('◀', page === 1, false, function() { renderPage(page - 1); }));
-      for (var i = 1; i <= total; i++) {
-        (function(n) {
-          container.appendChild(btn(n, false, n === page, function() { renderPage(n); }));
-        })(i);
-      }
-      container.appendChild(btn('▶', page === total, false, function() { renderPage(page + 1); }));
-    }
-
-    async function load() {
-      try {
-        var res = await fetch('games.json');
-        if (!res.ok) throw new Error('HTTP ' + res.status);
-        var games = await res.json();
-        allGames = games;
-
-        var fc = document.getElementById('featured');
-        var featured = games.filter(function(g) { return g.featured; });
-        if (!featured.length) {
-          document.getElementById('featured-section').style.display = 'none';
-        } else {
-          featured.forEach(function(g) { fc.appendChild(makeCard(g, true)); });
-        }
-        renderPage(1);
-      } catch (e) {
-        console.error('Load failed:', e);
-        document.getElementById('games').innerHTML = '<p class="empty">⚠ Could not load games. Check that games.json exists and is valid JSON.</p>';
-        document.getElementById('featured-section').style.display = 'none';
-      }
-    }
-
-    load();
-  </script>
+load();
+</script>
 
 </body>
 </html>
