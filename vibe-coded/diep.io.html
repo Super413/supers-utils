@@ -1,0 +1,567 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Tank Arena - Strategy Update</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <style>
+        body { margin: 0; overflow: hidden; background: #1a1a1a; font-family: sans-serif; }
+        canvas { display: block; }
+        #ui { position: absolute; top: 0; left: 0; width: 100%; height: 100%; pointer-events: none; }
+        .hud-element { pointer-events: auto; }
+        .upgrade-card { 
+            background: rgba(0, 0, 0, 0.8); 
+            border: 2px solid #444; 
+            transition: all 0.2s; 
+            cursor: pointer;
+        }
+        .upgrade-card:hover { border-color: #3b82f6; background: rgba(30, 41, 59, 0.9); }
+    </style>
+</head>
+<body>
+
+    <div id="ui" class="text-white">
+        <!-- Top Stats -->
+        <div class="absolute top-4 left-1/2 -translate-x-1/2 flex gap-8 items-center bg-black/40 p-3 rounded-full border border-white/10">
+            <div id="score-blue" class="text-blue-400 font-bold text-2xl">0</div>
+            <div class="text-gray-400">vs</div>
+            <div id="score-red" class="text-red-400 font-bold text-2xl">0</div>
+        </div>
+
+        <!-- Level Bar -->
+        <div class="absolute bottom-8 left-1/2 -translate-x-1/2 w-80 text-center hud-element">
+            <div class="text-sm mb-1 font-mono uppercase tracking-widest text-gray-300">Level <span id="lvl-val">1</span></div>
+            <div class="w-full h-3 bg-gray-800 rounded-full overflow-hidden border border-white/20">
+                <div id="xp-bar" class="h-full bg-yellow-400 transition-all duration-300" style="width: 0%"></div>
+            </div>
+            <div id="tank-name" class="mt-2 text-xs text-gray-400 italic">Basic Tank</div>
+        </div>
+
+        <!-- Upgrade Panel -->
+        <div id="upgrade-panel" class="absolute left-8 top-1/2 -translate-y-1/2 flex flex-col gap-4 hidden hud-element">
+            <h3 class="text-blue-400 font-bold uppercase tracking-tighter text-xl mb-2">Evolution Available</h3>
+            <div id="upgrade-list" class="flex flex-col gap-3"></div>
+        </div>
+    </div>
+
+    <canvas id="gameCanvas"></canvas>
+
+    <script>
+        const canvas = document.getElementById('gameCanvas');
+        const ctx = canvas.getContext('2d');
+
+        // Game Constants
+        const WORLD_SIZE = 3000;
+        const TEAM = { BLUE: 'blue', RED: 'red' };
+        const AI_ROLES = { ATTACKER: 'Attacker', DEFENDER: 'Defender', FLANKER: 'Flanker' };
+        
+        // Leveling Config
+        // Level 1-14: Tier 1 (Basic)
+        // Level 15-29: Tier 2
+        // Level 30+: Tier 3
+        const XP_PER_LEVEL = 1000;
+        const TIER_2_LVL = 15;
+        const TIER_3_LVL = 30;
+
+        let lastTime = 0;
+        let score = { blue: 0, red: 0 };
+        let camera = { x: 0, y: 0 };
+
+        // Tank Definitions
+        const TANK_TYPES = {
+            basic: { 
+                name: "Basic", speed: 4, health: 100, dmg: 20, reload: 600, range: 400, color: '#3b82f6', 
+                tier: 1, barrels: [{angle: 0, width: 20, length: 30}] 
+            },
+            twin: { 
+                name: "Twin", speed: 4.2, health: 120, dmg: 15, reload: 400, range: 450, tier: 2, 
+                barrels: [{angle: -0.15, width: 18, length: 30}, {angle: 0.15, width: 18, length: 30}] 
+            },
+            sniper: { 
+                name: "Sniper", speed: 3.5, health: 90, dmg: 45, reload: 1500, range: 800, tier: 2, 
+                barrels: [{angle: 0, width: 15, length: 45}] 
+            },
+            overseer: { 
+                name: "Overseer", speed: 3.8, health: 130, dmg: 10, reload: 2000, range: 500, tier: 2, isDrone: true, maxDrones: 4,
+                barrels: [{angle: 0, width: 25, length: 15}] 
+            },
+            triple: { 
+                name: "Triple Shot", speed: 4, health: 150, dmg: 18, reload: 500, range: 450, tier: 3, 
+                barrels: [{angle: 0, width: 18, length: 30}, {angle: -0.7, width: 18, length: 25}, {angle: 0.7, width: 18, length: 25}] 
+            },
+            manager: { 
+                name: "Manager", speed: 3.8, health: 160, dmg: 12, reload: 1800, range: 600, tier: 3, isDrone: true, maxDrones: 6,
+                barrels: [{angle: 0, width: 25, length: 18}] 
+            }
+        };
+
+        const EVOLUTIONS = {
+            basic: ['twin', 'sniper', 'overseer'],
+            twin: ['triple'],
+            overseer: ['manager'],
+            sniper: []
+        };
+
+        class Projectile {
+            constructor(x, y, angle, speed, damage, owner, color, isDrone = false) {
+                this.x = x;
+                this.y = y;
+                this.vx = Math.cos(angle) * speed;
+                this.vy = Math.sin(angle) * speed;
+                this.damage = damage;
+                this.owner = owner;
+                this.color = color;
+                this.radius = isDrone ? 10 : 6;
+                this.life = isDrone ? 10000 : 2000;
+                this.isDrone = isDrone;
+                this.target = null;
+                this.angle = angle;
+            }
+
+            update() {
+                if (this.isDrone) {
+                    // Drone logic: orbit owner if no target, else chase target
+                    if (!this.target || this.target.health <= 0) {
+                        const angle = Date.now() / 1000 + (this.owner.drones?.indexOf(this) || 0);
+                        const tx = this.owner.x + Math.cos(angle) * 60;
+                        const ty = this.owner.y + Math.sin(angle) * 60;
+                        this.vx += (tx - this.x) * 0.05;
+                        this.vy += (ty - this.y) * 0.05;
+                    } else {
+                        const angle = Math.atan2(this.target.y - this.y, this.target.x - this.x);
+                        this.vx += Math.cos(angle) * 0.4;
+                        this.vy += Math.sin(angle) * 0.4;
+                    }
+                    this.vx *= 0.95;
+                    this.vy *= 0.95;
+                }
+                
+                this.x += this.vx;
+                this.y += this.vy;
+                this.life -= 16;
+            }
+
+            draw() {
+                ctx.fillStyle = this.color;
+                ctx.beginPath();
+                if (this.isDrone) {
+                    ctx.save();
+                    ctx.translate(this.x, this.y);
+                    ctx.rotate(Math.atan2(this.vy, this.vx));
+                    ctx.moveTo(12, 0);
+                    ctx.lineTo(-6, -8);
+                    ctx.lineTo(-6, 8);
+                    ctx.closePath();
+                    ctx.fill();
+                    ctx.restore();
+                } else {
+                    ctx.arc(this.x, this.y, this.radius, 0, Math.PI * 2);
+                    ctx.fill();
+                }
+            }
+        }
+
+        class Point {
+            constructor(x, y) {
+                this.x = x;
+                this.y = y;
+                this.radius = 80;
+                this.owner = null;
+                this.progress = 0; // -100 to 100
+            }
+
+            update(tanks) {
+                let captureSpeed = 0;
+                tanks.forEach(t => {
+                    const dist = Math.hypot(t.x - this.x, t.y - this.y);
+                    if (dist < this.radius) {
+                        captureSpeed += (t.team === TEAM.BLUE ? 1 : -1) * 0.5;
+                    }
+                });
+                this.progress = Math.max(-100, Math.min(100, this.progress + captureSpeed));
+                
+                if (this.progress >= 100) {
+                    if (this.owner !== TEAM.BLUE) score.blue += 1;
+                    this.owner = TEAM.BLUE;
+                } else if (this.progress <= -100) {
+                    if (this.owner !== TEAM.RED) score.red += 1;
+                    this.owner = TEAM.RED;
+                } else if (Math.abs(this.progress) < 10) {
+                    this.owner = null;
+                }
+            }
+
+            draw() {
+                ctx.strokeStyle = this.owner === TEAM.BLUE ? '#3b82f6' : (this.owner === TEAM.RED ? '#ef4444' : '#666');
+                ctx.lineWidth = 4;
+                ctx.beginPath();
+                ctx.arc(this.x, this.y, this.radius, 0, Math.PI * 2);
+                ctx.stroke();
+
+                ctx.fillStyle = ctx.strokeStyle;
+                ctx.globalAlpha = 0.1;
+                ctx.beginPath();
+                ctx.arc(this.x, this.y, this.radius * (Math.abs(this.progress)/100), 0, Math.PI * 2);
+                ctx.fill();
+                ctx.globalAlpha = 1.0;
+            }
+        }
+
+        class Tank {
+            constructor(x, y, team, typeKey = 'basic', isBot = false) {
+                this.x = x;
+                this.y = y;
+                this.team = team;
+                this.isBot = isBot;
+                this.typeKey = typeKey;
+                this.angle = 0;
+                this.lastShot = 0;
+                this.xp = 0;
+                this.level = 1;
+                this.drones = [];
+                this.applyType(typeKey);
+                this.health = this.maxHealth;
+
+                // Bot Strategy
+                this.role = Object.values(AI_ROLES)[Math.floor(Math.random() * 3)];
+                this.targetPoint = null;
+                this.sloppiness = Math.random() * 0.2; // How much they jitter their aim
+                this.moveJitter = Math.random() * 100;
+            }
+
+            applyType(key) {
+                const config = TANK_TYPES[key];
+                this.typeKey = key;
+                this.name = config.name;
+                this.speed = config.speed;
+                this.maxHealth = config.health;
+                this.dmg = config.dmg;
+                this.reload = config.reload;
+                this.range = config.range;
+                this.barrels = config.barrels;
+                this.isDroneProvider = config.isDrone || false;
+                this.maxDrones = config.maxDrones || 0;
+            }
+
+            update(input, tanks, points) {
+                // Movement
+                let mx = 0, my = 0;
+                if (!this.isBot) {
+                    if (input.keys['w']) my -= 1;
+                    if (input.keys['s']) my += 1;
+                    if (input.keys['a']) mx -= 1;
+                    if (input.keys['d']) mx += 1;
+                    this.angle = Math.atan2(input.mouseY - (this.y - camera.y), input.mouseX - (this.x - camera.x));
+                } else {
+                    this.updateAI(tanks, points);
+                }
+
+                const mag = Math.hypot(mx, my);
+                if (mag > 0) {
+                    this.x += (mx / mag) * this.speed;
+                    this.y += (my / mag) * this.speed;
+                }
+
+                this.x = Math.max(50, Math.min(WORLD_SIZE - 50, this.x));
+                this.y = Math.max(50, Math.min(WORLD_SIZE - 50, this.y));
+
+                // Shooting
+                if ((!this.isBot && input.mouseDown) || (this.isBot && this.shouldShoot)) {
+                    this.shoot();
+                }
+
+                // Drone cleanup
+                this.drones = this.drones.filter(d => d.life > 0);
+                
+                // Tiering Logic
+                const targetLvl = Math.floor(this.xp / XP_PER_LEVEL) + 1;
+                if (targetLvl > this.level) {
+                    this.level = targetLvl;
+                    if (!this.isBot) updateUpgradePanel(this);
+                }
+            }
+
+            updateAI(tanks, points) {
+                let moveTarget = { x: WORLD_SIZE / 2, y: WORLD_SIZE / 2 };
+                let nearestEnemy = null;
+                let minDist = Infinity;
+
+                tanks.forEach(t => {
+                    if (t.team !== this.team) {
+                        const d = Math.hypot(t.x - this.x, t.y - this.y);
+                        if (d < minDist) {
+                            minDist = d;
+                            nearestEnemy = t;
+                        }
+                    }
+                });
+
+                // Role Logic
+                switch (this.role) {
+                    case AI_ROLES.ATTACKER:
+                        // Prioritize points, then rushing
+                        let unowned = points.filter(p => p.owner !== this.team);
+                        if (unowned.length > 0) {
+                            moveTarget = unowned[0];
+                        } else if (nearestEnemy) {
+                            moveTarget = nearestEnemy;
+                        } else {
+                            // Push enemy spawn
+                            moveTarget = this.team === TEAM.BLUE ? { x: WORLD_SIZE - 200, y: WORLD_SIZE / 2 } : { x: 200, y: WORLD_SIZE / 2 };
+                        }
+                        break;
+
+                    case AI_ROLES.DEFENDER:
+                        // Stay on friendly points
+                        let owned = points.filter(p => p.owner === this.team);
+                        if (owned.length > 0) {
+                            moveTarget = owned[Math.floor((Date.now() / 5000) % owned.length)];
+                        } else {
+                            moveTarget = points[Math.floor(Math.random() * points.length)];
+                        }
+                        break;
+
+                    case AI_ROLES.FLANKER:
+                        // Move in arcs/angles
+                        const time = Date.now() * 0.001;
+                        const arcX = Math.cos(time + this.moveJitter) * 600;
+                        const arcY = Math.sin(time + this.moveJitter) * 600;
+                        moveTarget = { x: WORLD_SIZE/2 + arcX, y: WORLD_SIZE/2 + arcY };
+                        if (nearestEnemy && minDist < 400) {
+                            // Circle enemy
+                            const ang = Math.atan2(this.y - nearestEnemy.y, this.x - nearestEnemy.x) + 0.1;
+                            moveTarget = { x: nearestEnemy.x + Math.cos(ang) * 300, y: nearestEnemy.y + Math.sin(ang) * 300 };
+                        }
+                        break;
+                }
+
+                // sloppy movement
+                const dx = moveTarget.x - this.x;
+                const dy = moveTarget.y - this.y;
+                const distToTarget = Math.hypot(dx, dy);
+                if (distToTarget > 20) {
+                    const mag = distToTarget;
+                    this.x += (dx / mag) * this.speed;
+                    this.y += (dy / mag) * this.speed;
+                }
+
+                // Aiming
+                this.shouldShoot = false;
+                if (nearestEnemy && minDist < this.range) {
+                    const targetAngle = Math.atan2(nearestEnemy.y - this.y, nearestEnemy.x - this.x);
+                    this.angle = targetAngle + (Math.sin(Date.now() * 0.01) * this.sloppiness);
+                    this.shouldShoot = true;
+                    
+                    // Assign drones
+                    if (this.isDroneProvider) {
+                        this.drones.forEach(d => d.target = nearestEnemy);
+                    }
+                }
+            }
+
+            shoot() {
+                const now = Date.now();
+                if (now - this.lastShot < this.reload) return;
+
+                if (this.isDroneProvider) {
+                    if (this.drones.length < this.maxDrones) {
+                        const d = new Projectile(this.x, this.y, this.angle, 2, this.dmg, this, this.team === TEAM.BLUE ? '#60a5fa' : '#f87171', true);
+                        this.drones.push(d);
+                        projectiles.push(d);
+                        this.lastShot = now;
+                    }
+                } else {
+                    this.barrels.forEach(b => {
+                        const px = this.x + Math.cos(this.angle + b.angle) * b.length;
+                        const py = this.y + Math.sin(this.angle + b.angle) * b.length;
+                        projectiles.push(new Projectile(px, py, this.angle + b.angle, 8, this.dmg, this, this.team === TEAM.BLUE ? '#60a5fa' : '#f87171'));
+                    });
+                    this.lastShot = now;
+                }
+            }
+
+            draw() {
+                ctx.save();
+                ctx.translate(this.x, this.y);
+
+                // Body
+                ctx.fillStyle = this.team === TEAM.BLUE ? '#3b82f6' : '#ef4444';
+                ctx.strokeStyle = '#222';
+                ctx.lineWidth = 3;
+
+                // Barrels
+                ctx.rotate(this.angle);
+                ctx.fillStyle = '#999';
+                this.barrels.forEach(b => {
+                    ctx.fillRect(0, -b.width / 2, b.length, b.width);
+                    ctx.strokeRect(0, -b.width / 2, b.length, b.width);
+                });
+
+                // Hull
+                ctx.rotate(-this.angle);
+                ctx.fillStyle = this.team === TEAM.BLUE ? '#3b82f6' : '#ef4444';
+                ctx.beginPath();
+                ctx.arc(0, 0, 20, 0, Math.PI * 2);
+                ctx.fill();
+                ctx.stroke();
+
+                // Health Bar
+                const hpPercent = this.health / this.maxHealth;
+                ctx.fillStyle = '#444';
+                ctx.fillRect(-20, -35, 40, 6);
+                ctx.fillStyle = '#4ade80';
+                ctx.fillRect(-20, -35, 40 * hpPercent, 6);
+                
+                // Name Tag
+                ctx.fillStyle = 'white';
+                ctx.font = '10px monospace';
+                ctx.textAlign = 'center';
+                ctx.fillText(`${this.name} (Lvl ${this.level})`, 0, 30);
+                if (this.isBot) ctx.fillText(`[${this.role}]`, 0, 42);
+
+                ctx.restore();
+            }
+        }
+
+        // Global State
+        let player = new Tank(100, 100, TEAM.BLUE);
+        let tanks = [player];
+        let points = [
+            new Point(WORLD_SIZE * 0.25, WORLD_SIZE * 0.25),
+            new Point(WORLD_SIZE * 0.75, WORLD_SIZE * 0.25),
+            new Point(WORLD_SIZE * 0.5, WORLD_SIZE * 0.5),
+            new Point(WORLD_SIZE * 0.25, WORLD_SIZE * 0.75),
+            new Point(WORLD_SIZE * 0.75, WORLD_SIZE * 0.75),
+        ];
+        let projectiles = [];
+
+        const input = { keys: {}, mouseX: 0, mouseY: 0, mouseDown: false };
+
+        window.addEventListener('keydown', e => input.keys[e.key.toLowerCase()] = true);
+        window.addEventListener('keyup', e => input.keys[e.key.toLowerCase()] = false);
+        window.addEventListener('mousemove', e => { input.mouseX = e.clientX; input.mouseY = e.clientY; });
+        window.addEventListener('mousedown', () => input.mouseDown = true);
+        window.addEventListener('mouseup', () => input.mouseDown = false);
+
+        function updateUpgradePanel(tank) {
+            const panel = document.getElementById('upgrade-panel');
+            const list = document.getElementById('upgrade-list');
+            list.innerHTML = '';
+
+            const currentTier = TANK_TYPES[tank.typeKey].tier;
+            let available = [];
+
+            // Logical Tier Checking
+            if (tank.level >= TIER_3_LVL && currentTier === 2) {
+                available = EVOLUTIONS[tank.typeKey] || [];
+            } else if (tank.level >= TIER_2_LVL && currentTier === 1) {
+                available = EVOLUTIONS[tank.typeKey] || [];
+            }
+
+            if (available.length > 0) {
+                panel.classList.remove('hidden');
+                available.forEach(key => {
+                    const cfg = TANK_TYPES[key];
+                    const card = document.createElement('div');
+                    card.className = 'upgrade-card p-3 rounded text-sm w-48';
+                    card.innerHTML = `<div class="font-bold">${cfg.name}</div><div class="text-xs text-gray-400">Tier ${cfg.tier} Evolution</div>`;
+                    card.onclick = () => {
+                        tank.applyType(key);
+                        panel.classList.add('hidden');
+                    };
+                    list.appendChild(card);
+                });
+            } else {
+                panel.classList.add('hidden');
+            }
+        }
+
+        function spawnBot() {
+            const side = Math.random() > 0.5 ? TEAM.BLUE : TEAM.RED;
+            const x = side === TEAM.BLUE ? 100 : WORLD_SIZE - 100;
+            const y = Math.random() * WORLD_SIZE;
+            tanks.push(new Tank(x, y, side, 'basic', true));
+        }
+
+        for (let i = 0; i < 12; i++) spawnBot();
+
+        function gameLoop(time) {
+            const dt = time - lastTime;
+            lastTime = time;
+
+            ctx.clearRect(0, 0, canvas.width, canvas.height);
+            canvas.width = window.innerWidth;
+            canvas.height = window.innerHeight;
+
+            camera.x = player.x - canvas.width / 2;
+            camera.y = player.y - canvas.height / 2;
+
+            // Draw Background Grid
+            ctx.save();
+            ctx.translate(-camera.x, -camera.y);
+            ctx.strokeStyle = '#333';
+            ctx.lineWidth = 1;
+            for (let x = 0; x <= WORLD_SIZE; x += 100) {
+                ctx.beginPath(); ctx.moveTo(x, 0); ctx.lineTo(x, WORLD_SIZE); ctx.stroke();
+            }
+            for (let y = 0; y <= WORLD_SIZE; y += 100) {
+                ctx.beginPath(); ctx.moveTo(0, y); ctx.lineTo(WORLD_SIZE, y); ctx.stroke();
+            }
+
+            points.forEach(p => {
+                p.update(tanks);
+                p.draw();
+            });
+
+            projectiles.forEach((p, i) => {
+                p.update();
+                p.draw();
+
+                // Collision with tanks
+                tanks.forEach(t => {
+                    if (t.team !== p.owner.team) {
+                        const dist = Math.hypot(t.x - p.x, t.y - p.y);
+                        if (dist < 25) {
+                            t.health -= p.damage;
+                            p.owner.xp += p.damage * 2; // XP granted from damage only
+                            p.life = 0;
+                        }
+                    }
+                });
+
+                if (p.life <= 0) projectiles.splice(i, 1);
+            });
+
+            tanks.forEach((t, i) => {
+                t.update(input, tanks, points);
+                t.draw();
+
+                if (t.health <= 0) {
+                    if (t === player) {
+                        player = new Tank(100, 100, TEAM.BLUE);
+                        tanks[i] = player;
+                    } else {
+                        tanks.splice(i, 1);
+                        setTimeout(spawnBot, 3000);
+                    }
+                }
+            });
+
+            ctx.restore();
+
+            // UI Updates
+            document.getElementById('score-blue').innerText = score.blue;
+            document.getElementById('score-red').innerText = score.red;
+            document.getElementById('lvl-val').innerText = player.level;
+            document.getElementById('tank-name').innerText = player.name;
+            const xpIntoLevel = player.xp % XP_PER_LEVEL;
+            document.getElementById('xp-bar').style.width = (xpIntoLevel / XP_PER_LEVEL * 100) + '%';
+
+            requestAnimationFrame(gameLoop);
+        }
+
+        requestAnimationFrame(gameLoop);
+    </script>
+</body>
+</html>

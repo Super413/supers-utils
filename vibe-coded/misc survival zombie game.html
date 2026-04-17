@@ -1,0 +1,1073 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Scavenger: Zero</title>
+    <style>
+        :root {
+            --bg-color: #0a0a0a;
+            --panel-bg: #141414;
+            --text-main: #c0c0c0;
+            --text-muted: #666;
+            --accent: #b71c1c; /* Deep Red */
+            --accent-safe: #2e7d32; /* Forest Green */
+            --border: #2a2a2a;
+            --font-mono: 'Consolas', 'Monaco', 'Courier New', monospace;
+        }
+
+        body {
+            margin: 0;
+            background-color: var(--bg-color);
+            color: var(--text-main);
+            font-family: var(--font-mono);
+            overflow: hidden;
+            display: flex;
+            flex-direction: column;
+            height: 100vh;
+            user-select: none;
+        }
+
+        /* Layout */
+        #game-container {
+            display: flex;
+            flex: 1;
+            overflow: hidden;
+        }
+
+        #canvas-wrapper {
+            flex: 1;
+            position: relative;
+            background: #050505;
+            box-shadow: inset 0 0 50px #000;
+        }
+
+        canvas {
+            display: block;
+            width: 100%;
+            height: 100%;
+            cursor: crosshair;
+        }
+
+        /* UI Overlays */
+        #ui-layer {
+            position: absolute;
+            top: 20px;
+            left: 20px;
+            pointer-events: none;
+            display: flex;
+            flex-direction: column;
+            gap: 10px;
+        }
+
+        .hud-bar {
+            background: rgba(0,0,0,0.7);
+            padding: 5px 10px;
+            border-left: 3px solid #555;
+            color: #fff;
+            font-size: 14px;
+            text-shadow: 1px 1px 0 #000;
+        }
+
+        /* Sidebar UI */
+        #sidebar {
+            width: 340px;
+            background: var(--panel-bg);
+            border-left: 1px solid var(--border);
+            display: flex;
+            flex-direction: column;
+            padding: 0;
+            box-sizing: border-box;
+            font-size: 12px;
+            box-shadow: -5px 0 15px rgba(0,0,0,0.5);
+            z-index: 10;
+        }
+
+        .panel {
+            padding: 15px;
+            border-bottom: 1px solid var(--border);
+            background: #1a1a1a;
+        }
+
+        .panel-header {
+            font-weight: 700;
+            border-bottom: 2px solid var(--border);
+            padding-bottom: 8px;
+            margin-bottom: 10px;
+            color: #eee;
+            text-transform: uppercase;
+            letter-spacing: 1px;
+            font-size: 11px;
+        }
+
+        /* Stats Bars */
+        .stat-row {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 6px;
+        }
+        .stat-label { width: 60px; color: #888; }
+        .bar-bg {
+            flex: 1;
+            background: #000;
+            height: 6px;
+            margin-left: 10px;
+            border: 1px solid #333;
+            position: relative;
+        }
+        .bar-fill {
+            height: 100%;
+            transition: width 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+        }
+
+        /* Inventory */
+        #inventory-list {
+            flex: 1;
+            overflow-y: auto;
+            padding: 10px;
+            background: #111;
+        }
+        .item-slot {
+            padding: 8px;
+            background: #222;
+            margin-bottom: 4px;
+            cursor: pointer;
+            display: flex;
+            justify-content: space-between;
+            border: 1px solid transparent;
+            transition: all 0.1s;
+        }
+        .item-slot:hover { background: #2a2a2a; border-color: #444; }
+        .item-slot.selected { border-color: var(--text-main); background: #333; }
+        
+        /* Modal */
+        #modal-overlay {
+            display: none;
+            position: absolute;
+            top: 0; left: 0; right: 0; bottom: 0;
+            background: rgba(0,0,0,0.9);
+            z-index: 100;
+            justify-content: center;
+            align-items: center;
+            backdrop-filter: blur(2px);
+        }
+        #workbench {
+            width: 600px;
+            background: #1a1a1a;
+            border: 1px solid #444;
+            padding: 25px;
+            box-shadow: 0 0 30px rgba(0,0,0,0.8);
+        }
+        
+        .part-slot {
+            background: #111;
+            border: 1px solid #333;
+            padding: 12px;
+            margin: 8px 0;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+        
+        button {
+            background: #333;
+            color: #eee;
+            border: 1px solid #555;
+            padding: 6px 12px;
+            cursor: pointer;
+            font-family: var(--font-mono);
+            font-size: 11px;
+            text-transform: uppercase;
+            transition: background 0.2s;
+        }
+        button:hover { background: #555; border-color: #777; }
+        
+        /* Log */
+        #log {
+            height: 120px;
+            overflow-y: auto;
+            background: #000;
+            padding: 10px;
+            font-size: 11px;
+            border-top: 1px solid var(--border);
+            color: #888;
+        }
+        .log-msg { margin-bottom: 4px; border-left: 2px solid transparent; padding-left: 5px; }
+        .log-warn { border-left-color: var(--accent); color: #e57373; }
+        .log-good { border-left-color: var(--accent-safe); color: #81c784; }
+
+        .controls-hint {
+            position: absolute;
+            bottom: 20px;
+            left: 20px;
+            color: rgba(255,255,255,0.4);
+            font-size: 11px;
+            pointer-events: none;
+            text-shadow: 1px 1px 2px #000;
+        }
+    </style>
+</head>
+<body>
+
+<div id="game-container">
+    <div id="canvas-wrapper">
+        <canvas id="gameCanvas"></canvas>
+        <div class="controls-hint">
+            WASD: Move | SPACE: Attack | E: Interact | I: Inventory | R: Reload | SHIFT: Sprint
+        </div>
+    </div>
+
+    <div id="sidebar">
+        <div class="panel">
+            <div class="panel-header">Status</div>
+            <div id="stats-container"></div>
+            <div style="margin-top:10px; font-size:10px; color:#666; display:flex; justify-content:space-between;">
+                <span id="biome-info">Wilderness</span>
+                <span id="time-info">Day 1</span>
+            </div>
+        </div>
+
+        <div class="panel" style="padding:0; flex:1; display:flex; flex-direction:column; border:none;">
+            <div style="padding: 15px 15px 5px 15px;">
+                <div class="panel-header">Inventory <span id="weight-display" style="float:right;">0kg</span></div>
+            </div>
+            <div id="inventory-list"></div>
+            <div style="padding: 15px; background: #181818; border-top: 1px solid #333;">
+                <div id="item-details" style="min-height: 40px; margin-bottom: 10px; color: #aaa;">Select an item...</div>
+                <div id="item-actions" style="display:flex; gap: 8px;"></div>
+            </div>
+        </div>
+
+        <div id="log">
+            <div class="log-msg">Welcome to Scavenger: Zero.</div>
+            <div class="log-msg">Find shelter. Survive.</div>
+        </div>
+    </div>
+</div>
+
+<div id="modal-overlay">
+    <div id="workbench">
+        <div class="panel-header" style="font-size:14px; color:var(--text-main);">Weapon Maintenance</div>
+        <div id="weapon-name" style="font-size: 18px; margin-bottom: 5px; color:#fff;"></div>
+        <div id="weapon-stats" style="font-size: 11px; color: #888; margin-bottom: 20px; border-bottom:1px solid #333; padding-bottom:10px;"></div>
+        <div id="parts-container" style="max-height: 400px; overflow-y:auto;"></div>
+        <div style="margin-top:20px; text-align:right;">
+            <button id="close-modal">Close Workbench</button>
+        </div>
+    </div>
+</div>
+
+<script>
+/**
+ * CONFIG & CONSTANTS
+ */
+const CONFIG = {
+    tileSize: 40,
+    chunkSize: 16,
+    viewDist: 14, 
+    plotSize: 12, // Tiles per building plot
+};
+
+const COLORS = {
+    grass: ['#1e261e', '#232e23'], 
+    forest: '#0d140d',
+    road: '#222',
+    floor: '#2a2826',
+    wall: '#4a4a4a',
+    wallDark: '#333',
+    wallLight: '#666',
+    door: '#3d2e20',
+    water: '#1a2a3a',
+    player: '#e0e0e0',
+    zombie: '#8c2d2d'
+};
+
+/**
+ * PREFAB STRUCTURES
+ */
+const STRUCTURES = {
+    house_small: {
+        w: 7, h: 7,
+        layout: [
+            ".......",
+            ".#####.",
+            ".#LFF#.",
+            ".#FFF#.",
+            ".#FFF#.",
+            ".##D##.",
+            "......."
+        ]
+    },
+    warehouse: {
+        w: 12, h: 10,
+        layout: [
+            "............",
+            ".##########.",
+            ".#L......L#.",
+            ".#........#.",
+            ".#........#.",
+            ".#........#.",
+            ".#L......L#.",
+            ".#####DD###.",
+            ".....#..#...",
+            ".....#..#..."
+        ]
+    },
+    cabin: {
+        w: 5, h: 5,
+        layout: [
+            "#####",
+            "#L..#",
+            "#...#",
+            "#...#",
+            "##D##"
+        ]
+    },
+    ruin: {
+        w: 6, h: 6,
+        layout: [
+            "#...#.",
+            "......",
+            "..L...",
+            "......",
+            ".#....",
+            ".....#"
+        ]
+    }
+};
+
+/**
+ * UTILS
+ */
+function hash(x, y) {
+    let h = 0x811c9dc5;
+    h ^= x; h = Math.imul(h, 0x01000193);
+    h ^= y; h = Math.imul(h, 0x01000193);
+    return (h >>> 0) / 4294967296;
+}
+
+// Value Noise for smoother transitions
+function noise(x, y) {
+    const xi = Math.floor(x);
+    const yi = Math.floor(y);
+    
+    const sx = x - xi;
+    const sy = y - yi;
+    
+    // Cubic interpolation (Smoothstep)
+    const smoothX = sx * sx * (3 - 2 * sx);
+    const smoothY = sy * sy * (3 - 2 * sy);
+    
+    const n00 = hash(xi, yi);
+    const n10 = hash(xi + 1, yi);
+    const n01 = hash(xi, yi + 1);
+    const n11 = hash(xi + 1, yi + 1);
+    
+    const ix0 = n00 + smoothX * (n10 - n00);
+    const ix1 = n01 + smoothX * (n11 - n01);
+    
+    return ix0 + smoothY * (ix1 - ix0);
+}
+
+// Fractal Brownian Motion for layered detail
+function fbm(x, y, octaves) {
+    let val = 0;
+    let amp = 0.5;
+    let freq = 1;
+    for(let i = 0; i < octaves; i++) {
+        val += noise(x * freq, y * freq) * amp;
+        amp *= 0.5;
+        freq *= 2;
+    }
+    return val;
+}
+
+const rnd = (min, max) => Math.floor(Math.random() * (max - min + 1)) + min;
+const uuid = () => Math.random().toString(36).substr(2, 9);
+const coin = () => Math.random() < 0.5;
+
+/**
+ * ITEM SYSTEM
+ */
+const CONDITION = { PRISTINE: 100, WORN: 70, DAMAGED: 40, RUINED: 0 };
+
+class Item {
+    constructor(name, type, weight) {
+        this.id = uuid();
+        this.name = name;
+        this.type = type;
+        this.weight = weight;
+        this.condition = 100;
+    }
+    
+    getDesc() { return ""; }
+}
+
+class WeaponPart extends Item {
+    constructor(name, partType) {
+        super(name, 'part', 0.2);
+        this.partType = partType;
+    }
+}
+
+class Weapon extends Item {
+    constructor(name, family) {
+        super(name, 'weapon', 3.0);
+        this.family = family;
+        this.barrel = { condition: rnd(60, 100), fixed: true };
+        this.parts = { receiver: null, bolt: null, spring: null, trigger: null, mag: null };
+        this.ammo = 0;
+    }
+
+    install(part) {
+        if(part.type !== 'part' || !part.name.includes(this.family)) return false;
+        const old = this.parts[part.partType];
+        this.parts[part.partType] = part;
+        return old;
+    }
+
+    remove(type) {
+        if(type === 'barrel') return null;
+        const p = this.parts[type];
+        this.parts[type] = null;
+        return p;
+    }
+
+    isValid() {
+        return this.parts.receiver && this.parts.bolt && this.parts.trigger && this.parts.spring;
+    }
+
+    fire() {
+        if(!this.isValid()) return { ok: false, msg: "Missing parts" };
+        if(this.ammo <= 0) return { ok: false, msg: "*Click*" };
+        
+        let jamProb = 0;
+        if(this.parts.receiver.condition < 40) jamProb += 0.1;
+        if(this.parts.bolt.condition < 40) jamProb += 0.2;
+        
+        if(Math.random() < jamProb) return { ok: false, msg: "JAMMED!" };
+
+        this.ammo--;
+        // Wear
+        this.barrel.condition -= 0.1;
+        this.parts.bolt.condition -= 0.3;
+        
+        return { ok: true, dmg: rnd(20, 40) };
+    }
+}
+
+/**
+ * WORLD GENERATION
+ */
+const State = {
+    player: { 
+        x: 0, y: 0, 
+        stats: { hp: 100, hunger: 100, thirst: 100, stam: 100 },
+        inventory: [],
+        equipped: null
+    },
+    entities: [],
+    containers: {}, // x,y -> [items]
+    time: 0
+};
+
+function getTile(x, y) {
+    const tx = Math.floor(x / CONFIG.tileSize);
+    const ty = Math.floor(y / CONFIG.tileSize);
+    
+    // Scale down coords for noise
+    // Base layer: Civ vs Nature
+    const civNoise = fbm((tx + 100) * 0.02, (ty + 100) * 0.02, 3);
+    const natureNoise = fbm((tx - 500) * 0.05, (ty - 500) * 0.05, 3);
+
+    const plotX = Math.floor(tx / CONFIG.plotSize);
+    const plotY = Math.floor(ty / CONFIG.plotSize);
+    const plotHash = hash(plotX, plotY);
+    const plotCivNoise = fbm((plotX * CONFIG.plotSize + 100) * 0.02, (plotY * CONFIG.plotSize + 100) * 0.02, 3);
+
+    // TOWN BIOME (Density driven)
+    if (plotCivNoise > 0.6) {
+        // High civNoise (center of town) = High chance of building
+        const densityThreshold = 1.25 - plotCivNoise; 
+        
+        if (plotHash > densityThreshold) {
+            // Pick building type based on hash
+            const types = Object.keys(STRUCTURES);
+            const bType = types[Math.floor(plotHash * 100) % types.length];
+            const build = STRUCTURES[bType];
+            
+            const ox = tx - (plotX * CONFIG.plotSize);
+            const oy = ty - (plotY * CONFIG.plotSize);
+            const startX = Math.floor((CONFIG.plotSize - build.w) / 2);
+            const startY = Math.floor((CONFIG.plotSize - build.h) / 2);
+
+            if (ox >= startX && ox < startX + build.w && oy >= startY && oy < startY + build.h) {
+                const char = build.layout[oy - startY][ox - startX];
+                switch(char) {
+                    case '#': return { type: 'wall', block: true };
+                    case 'F': return { type: 'floor', block: false };
+                    case 'D': return { type: 'door', block: false };
+                    case 'L': return { type: 'floor', block: false, loot: true };
+                }
+            }
+            return { type: 'road', block: false }; 
+        }
+        
+        if (hash(tx, ty) > 0.9) return { type: 'grass', block: false }; 
+        return { type: 'road', block: false };
+    }
+
+    // Rare Cabins in Wilderness/Forest (2% per plot)
+    if (plotHash > 0.98) {
+        const build = STRUCTURES.cabin;
+        const ox = tx - (plotX * CONFIG.plotSize);
+        const oy = ty - (plotY * CONFIG.plotSize);
+        const startX = Math.floor((CONFIG.plotSize - build.w) / 2);
+        const startY = Math.floor((CONFIG.plotSize - build.h) / 2);
+
+        if (ox >= startX && ox < startX + build.w && oy >= startY && oy < startY + build.h) {
+            const char = build.layout[oy - startY][ox - startX];
+            switch(char) {
+                case '#': return { type: 'wall', block: true };
+                case 'F': return { type: 'floor', block: false };
+                case 'D': return { type: 'door', block: false };
+                case 'L': return { type: 'floor', block: false, loot: true };
+            }
+        }
+        // Clearing around cabin
+        return { type: 'grass', block: false }; 
+    }
+
+    // FOREST BIOME
+    if (natureNoise > 0.55) {
+        const density = (natureNoise - 0.55) * 3.0; 
+        const localNoise = hash(tx, ty);
+        
+        if (localNoise < density * 0.8) return { type: 'tree', block: true };
+        if (localNoise > 0.98) return { type: 'stump', block: false, loot: true };
+        return { type: 'forest_floor', block: false };
+    }
+
+    // WILDERNESS (Default)
+    const detail = hash(tx * 0.5, ty * 0.5);
+    if (detail > 0.97) return { type: 'bush', block: true };
+    if (detail > 0.96) return { type: 'floor', block: false, loot: true }; 
+    
+    // Occasional Old Roads
+    const roadNoise = fbm(tx * 0.015, ty * 0.015, 2);
+    if (Math.abs(roadNoise - 0.5) < 0.015) return { type: 'road', block: false };
+
+    return { type: 'grass', block: false };
+}
+
+function getBiomeLabel(x, y) {
+    const tx = Math.floor(x / CONFIG.tileSize);
+    const ty = Math.floor(y / CONFIG.tileSize);
+    const civ = fbm((tx+100)*0.02, (ty+100)*0.02, 3);
+    if(civ > 0.6) return "URBAN SECTOR";
+    const nat = fbm((tx-500)*0.05, (ty-500)*0.05, 3);
+    if(nat > 0.55) return "DEEP FOREST";
+    return "WASTELAND";
+}
+
+/**
+ * ENGINE & RENDERING
+ */
+const canvas = document.getElementById('gameCanvas');
+const ctx = canvas.getContext('2d');
+let cam = { x: 0, y: 0 };
+let mouse = { x: 0, y: 0 };
+let keys = {};
+
+// Visual Renderer
+const Renderer = {
+    drawWall(x, y, size, n) {
+        ctx.fillStyle = COLORS.wall;
+        ctx.fillRect(x, y, size, size);
+        
+        // Connected texture logic
+        ctx.fillStyle = COLORS.wallLight;
+        if (!n.nN) ctx.fillRect(x, y, size, 4); // Top highlight only if no neighbor above
+        if (!n.nW) ctx.fillRect(x, y, 4, size); // Left highlight only if no neighbor left
+        
+        ctx.fillStyle = COLORS.wallDark;
+        if (!n.nS) ctx.fillRect(x, y + size - 4, size, 4); // Bottom shadow if no neighbor below
+        if (!n.nE) ctx.fillRect(x + size - 4, y, 4, size); // Right shadow if no neighbor right
+    },
+
+    drawTile(type, screenX, screenY, size, worldX, worldY) {
+        // Use World Coordinates (worldX/worldY) for stable textures
+        const wx = Math.floor(worldX);
+        const wy = Math.floor(worldY);
+
+        if (type === 'grass') {
+            ctx.fillStyle = (wx+wy)%2===0 ? COLORS.grass[0] : COLORS.grass[1];
+            ctx.fillRect(screenX, screenY, size, size);
+            if (hash(wx,wy) > 0.5) {
+                ctx.fillStyle = '#2a382a';
+                ctx.fillRect(screenX + size*0.2, screenY + size*0.5, 2, 4);
+                ctx.fillRect(screenX + size*0.7, screenY + size*0.2, 2, 3);
+            }
+        } 
+        else if (type === 'forest_floor') {
+            ctx.fillStyle = COLORS.forest;
+            ctx.fillRect(screenX, screenY, size, size);
+        }
+        else if (type === 'road') {
+            ctx.fillStyle = COLORS.road;
+            ctx.fillRect(screenX, screenY, size, size);
+            ctx.fillStyle = '#333';
+            ctx.fillRect(screenX+size*0.5, screenY+size*0.5, 2, 2);
+        }
+        else if (type === 'floor') {
+            ctx.fillStyle = COLORS.floor;
+            ctx.fillRect(screenX, screenY, size, size);
+            ctx.fillStyle = '#222';
+            ctx.beginPath();
+            ctx.moveTo(screenX, screenY+size/2);
+            ctx.lineTo(screenX+size, screenY+size/2);
+            ctx.stroke();
+        }
+        else if (type === 'door') {
+            ctx.fillStyle = COLORS.door;
+            ctx.fillRect(screenX + 5, screenY + 5, size - 10, size - 10);
+            ctx.fillStyle = '#000'; 
+            ctx.fillRect(screenX + size - 10, screenY + size/2, 4, 4);
+        }
+        else if (type === 'stump') {
+            ctx.fillStyle = '#3e2723';
+            ctx.beginPath();
+            ctx.arc(screenX + size/2, screenY + size/2, size/3, 0, Math.PI*2);
+            ctx.fill();
+            ctx.fillStyle = '#5d4037';
+            ctx.beginPath();
+            ctx.arc(screenX + size/2, screenY + size/2, size/4, 0, Math.PI*2);
+            ctx.fill();
+        }
+        else if (type === 'tree') {
+            ctx.fillStyle = '#0f1f0f'; 
+            ctx.fillRect(screenX, screenY, size, size);
+            ctx.fillStyle = 'rgba(0,0,0,0.4)';
+            ctx.beginPath();
+            ctx.arc(screenX + size/2 + 5, screenY + size/2 + 5, size/2.5, 0, Math.PI*2);
+            ctx.fill();
+            ctx.fillStyle = '#1b331b';
+            ctx.beginPath();
+            ctx.arc(screenX + size/2, screenY + size/2, size/2.2, 0, Math.PI*2);
+            ctx.fill();
+            ctx.fillStyle = '#264026'; 
+            ctx.beginPath();
+            ctx.arc(screenX + size/2, screenY + size/2, size/3.5, 0, Math.PI*2);
+            ctx.fill();
+        }
+        else if (type === 'bush') {
+            ctx.fillStyle = (wx+wy)%2===0 ? COLORS.grass[0] : COLORS.grass[1];
+            ctx.fillRect(screenX, screenY, size, size);
+            ctx.fillStyle = '#141';
+            ctx.beginPath();
+            ctx.arc(screenX + size/2, screenY + size/2, size/3, 0, Math.PI*2);
+            ctx.fill();
+        }
+    },
+
+    drawLoot(screenX, screenY, size) {
+        const p = size * 0.2;
+        const s = size * 0.6;
+        ctx.fillStyle = '#8d6e63';
+        ctx.fillRect(screenX + p, screenY + p, s, s);
+        ctx.strokeStyle = '#5d4037';
+        ctx.lineWidth = 2;
+        ctx.strokeRect(screenX + p, screenY + p, s, s);
+        ctx.beginPath();
+        ctx.moveTo(screenX+p, screenY+p); ctx.lineTo(screenX+p+s, screenY+p+s);
+        ctx.moveTo(screenX+p+s, screenY+p); ctx.lineTo(screenX+p, screenY+p+s);
+        ctx.stroke();
+    },
+
+    drawPlayer(x, y) {
+        ctx.fillStyle = 'rgba(0,0,0,0.5)';
+        ctx.beginPath();
+        ctx.ellipse(x, y + 15, 12, 6, 0, 0, Math.PI*2);
+        ctx.fill();
+
+        ctx.fillStyle = COLORS.player;
+        ctx.beginPath();
+        ctx.arc(x, y, 10, 0, Math.PI*2);
+        ctx.fill();
+        
+        const ang = Math.atan2(mouse.y - y, mouse.x - x);
+        ctx.strokeStyle = '#555';
+        ctx.lineWidth = 3;
+        ctx.beginPath();
+        ctx.moveTo(x, y);
+        ctx.lineTo(x + Math.cos(ang)*15, y + Math.sin(ang)*15);
+        ctx.stroke();
+    },
+
+    drawZombie(ent, cx, cy) {
+        ctx.fillStyle = 'rgba(0,0,0,0.5)';
+        ctx.beginPath();
+        ctx.ellipse(ent.x - cx, ent.y - cy + 15, 12, 6, 0, 0, Math.PI*2);
+        ctx.fill();
+
+        ctx.fillStyle = COLORS.zombie;
+        ctx.beginPath();
+        ctx.arc(ent.x - cx, ent.y - cy, 10, 0, Math.PI*2);
+        ctx.fill();
+        
+        if(ent.aggro) {
+            ctx.fillStyle = '#f00';
+            ctx.fillRect(ent.x - cx - 2, ent.y - cy - 20, 4, 4);
+        }
+    }
+};
+
+/**
+ * GAME LOGIC
+ */
+function update() {
+    let dx = 0, dy = 0;
+    const spd = keys['Shift'] && State.player.stats.stam > 0 ? 5 : 2.5;
+    
+    if (keys['w']) dy -= spd;
+    if (keys['s']) dy += spd;
+    if (keys['a']) dx -= spd;
+    if (keys['d']) dx += spd;
+
+    if(dx!==0 && dy!==0) { dx *= 0.707; dy *= 0.707; }
+
+    if (dx !== 0 || dy !== 0) {
+        const nx = State.player.x + dx;
+        const ny = State.player.y + dy;
+        
+        const t = getTile(nx, ny);
+        if (!t.block) {
+            State.player.x = nx;
+            State.player.y = ny;
+            
+            State.player.stats.hunger -= 0.002;
+            State.player.stats.thirst -= 0.004;
+            if (keys['Shift']) State.player.stats.stam -= 0.5;
+        }
+    } else {
+        State.player.stats.stam = Math.min(100, State.player.stats.stam + 0.3);
+    }
+
+    cam.x = State.player.x - canvas.width / 2;
+    cam.y = State.player.y - canvas.height / 2;
+
+    State.entities.forEach(e => {
+        const dist = Math.hypot(State.player.x - e.x, State.player.y - e.y);
+        // Reduced Detection Range
+        if (dist < 120) e.aggro = true; // Was 300
+        if (dist > 250) e.aggro = false; // Was 500
+        
+        if (e.aggro) {
+            const angle = Math.atan2(State.player.y - e.y, State.player.x - e.x);
+            const mx = Math.cos(angle) * 1.8;
+            const my = Math.sin(angle) * 1.8;
+            
+            if(!getTile(e.x+mx, e.y+my).block) {
+                e.x += mx;
+                e.y += my;
+            }
+
+            if (dist < 20 && Math.random() < 0.02) {
+                State.player.stats.hp -= 5;
+                log("Taken damage!", "warn");
+            }
+        }
+    });
+
+    if (State.entities.length < 8 && Math.random() < 0.02) {
+        const angle = Math.random() * Math.PI * 2;
+        const r = 500;
+        const ex = State.player.x + Math.cos(angle) * r;
+        const ey = State.player.y + Math.sin(angle) * r;
+        if (!getTile(ex, ey).block) {
+            State.entities.push({ x: ex, y: ey, hp: 40, aggro: false });
+        }
+    }
+}
+
+function draw() {
+    ctx.fillStyle = '#000';
+    ctx.fillRect(0, 0, canvas.width, canvas.height);
+
+    const startCol = Math.floor(cam.x / CONFIG.tileSize);
+    const endCol = startCol + (canvas.width / CONFIG.tileSize) + 2;
+    const startRow = Math.floor(cam.y / CONFIG.tileSize);
+    const endRow = startRow + (canvas.height / CONFIG.tileSize) + 2;
+
+    for (let c = startCol; c <= endCol; c++) {
+        for (let r = startRow; r <= endRow; r++) {
+            const x = c * CONFIG.tileSize; // World X
+            const y = r * CONFIG.tileSize; // World Y
+            const tile = getTile(x, y);
+            
+            const screenX = Math.floor(x - cam.x);
+            const screenY = Math.floor(y - cam.y);
+
+            if (tile.type === 'wall') {
+                const nN = getTile(x, y - CONFIG.tileSize).type === 'wall';
+                const nS = getTile(x, y + CONFIG.tileSize).type === 'wall';
+                const nW = getTile(x - CONFIG.tileSize, y).type === 'wall';
+                const nE = getTile(x + CONFIG.tileSize, y).type === 'wall';
+                Renderer.drawWall(screenX, screenY, CONFIG.tileSize, {nN, nS, nW, nE});
+            } else {
+                // Pass World Coordinates (c, r) to fix flickering
+                Renderer.drawTile(tile.type, screenX, screenY, CONFIG.tileSize, c, r);
+            }
+            
+            const key = `${c},${r}`;
+            if (tile.loot && !State.containers[key]) {
+                Renderer.drawLoot(screenX, screenY, CONFIG.tileSize);
+            }
+        }
+    }
+
+    State.entities.forEach(e => Renderer.drawZombie(e, cam.x, cam.y));
+    Renderer.drawPlayer(State.player.x - cam.x, State.player.y - cam.y);
+}
+
+function loop() {
+    update();
+    draw();
+    updateUI();
+    requestAnimationFrame(loop);
+}
+
+/**
+ * UI & INTERACTION
+ */
+function updateUI() {
+    const s = State.player.stats;
+    document.getElementById('stats-container').innerHTML = `
+        <div class="stat-row"><span class="stat-label">HP</span><div class="bar-bg"><div class="bar-fill" style="width:${s.hp}%; background:#d32f2f;"></div></div></div>
+        <div class="stat-row"><span class="stat-label">FOOD</span><div class="bar-bg"><div class="bar-fill" style="width:${s.hunger}%; background:#f57f17;"></div></div></div>
+        <div class="stat-row"><span class="stat-label">H2O</span><div class="bar-bg"><div class="bar-fill" style="width:${s.thirst}%; background:#0288d1;"></div></div></div>
+        <div class="stat-row"><span class="stat-label">NRG</span><div class="bar-bg"><div class="bar-fill" style="width:${s.stam}%; background:#388e3c;"></div></div></div>
+    `;
+
+    document.getElementById('biome-info').innerText = getBiomeLabel(State.player.x, State.player.y);
+
+    const w = State.player.inventory.reduce((a,b)=>a+b.weight, 0).toFixed(1);
+    document.getElementById('weight-display').innerText = `${w} / 30kg`;
+}
+
+function renderInventory() {
+    const list = document.getElementById('inventory-list');
+    list.innerHTML = '';
+    State.player.inventory.forEach((item, i) => {
+        const div = document.createElement('div');
+        div.className = 'item-slot';
+        let cond = '';
+        if (item.condition) {
+            let color = '#4caf50';
+            if(item.condition < 80) color = '#ffeb3b';
+            if(item.condition < 40) color = '#f44336';
+            cond = `<span style="color:${color}; font-size:10px;">${Math.floor(item.condition)}%</span>`;
+        }
+        div.innerHTML = `<span>${item.name}</span> ${cond}`;
+        div.onclick = () => selectItem(item, i, div);
+        list.appendChild(div);
+    });
+}
+
+function selectItem(item, idx, el) {
+    document.querySelectorAll('.item-slot').forEach(e => e.classList.remove('selected'));
+    el.classList.add('selected');
+    
+    const details = document.getElementById('item-details');
+    const actions = document.getElementById('item-actions');
+    
+    let info = `<b>${item.name}</b><br><span style="color:#666;">${item.type.toUpperCase()} | ${item.weight}kg</span>`;
+    
+    if (item.type === 'weapon') {
+        const stats = item.getStats ? item.getStats() : {status:'Unknown'}; 
+        info += `<br>Status: ${item.isValid() ? "Operational" : "Missing Parts"}`;
+    }
+    
+    details.innerHTML = info;
+    actions.innerHTML = '';
+
+    const btn = (txt, fn) => {
+        const b = document.createElement('button');
+        b.innerText = txt;
+        b.onclick = fn;
+        actions.appendChild(b);
+    };
+
+    btn("DROP", () => {
+        State.player.inventory.splice(idx, 1);
+        renderInventory();
+        details.innerHTML = 'Item dropped.';
+        actions.innerHTML = '';
+    });
+
+    if(item.type === 'food') btn("EAT", () => {
+        State.player.stats.hunger = Math.min(100, State.player.stats.hunger + 30);
+        State.player.inventory.splice(idx, 1);
+        renderInventory();
+        log(`Ate ${item.name}`, 'good');
+    });
+
+    if(item.type === 'weapon') {
+        btn("EQUIP", () => {
+            State.player.equipped = item;
+            log(`Equipped ${item.name}`);
+        });
+        btn("MOD", () => openWorkbench(item));
+    }
+}
+
+function spawnLoot() {
+    const r = Math.random();
+    if(r < 0.3) return new Item("Canned Tuna", "food", 0.4);
+    if(r < 0.5) return new Item("Water Bottle", "food", 0.5);
+    if(r < 0.6) return new WeaponPart("AK Receiver", "receiver");
+    if(r < 0.7) return new WeaponPart("AK Bolt", "bolt");
+    if(r < 0.75) return new Weapon("AK-74", "AK");
+    return new Item("Scrap Metal", "junk", 0.5);
+}
+
+let curWep = null;
+function openWorkbench(w) {
+    curWep = w;
+    document.getElementById('modal-overlay').style.display = 'flex';
+    document.getElementById('weapon-name').innerText = w.name;
+    renderParts();
+}
+
+function renderParts() {
+    const c = document.getElementById('parts-container');
+    c.innerHTML = '';
+    const slots = ['receiver', 'bolt', 'spring', 'trigger', 'mag'];
+    
+    c.innerHTML += `<div class="part-slot">
+        <span>BARREL <span style="color:#888;">(Fixed)</span></span>
+        <span>${Math.floor(curWep.barrel.condition)}%</span>
+    </div>`;
+
+    slots.forEach(s => {
+        const p = curWep.parts[s];
+        const div = document.createElement('div');
+        div.className = 'part-slot';
+        if(p) {
+            div.innerHTML = `<span>${p.name} (${Math.floor(p.condition)}%)</span> <button onclick="remPart('${s}')">Remove</button>`;
+        } else {
+            div.innerHTML = `<span style="color:#555;">${s.toUpperCase()} EMPTY</span> <button onclick="addPart('${s}')">Install</button>`;
+        }
+        c.appendChild(div);
+    });
+}
+
+window.remPart = (s) => {
+    const p = curWep.remove(s);
+    if(p) {
+        State.player.inventory.push(p);
+        renderInventory();
+        renderParts();
+    }
+};
+
+window.addPart = (s) => {
+    const idx = State.player.inventory.findIndex(i => i.partType === s);
+    if(idx > -1) {
+        const p = State.player.inventory[idx];
+        const old = curWep.install(p);
+        State.player.inventory.splice(idx, 1);
+        if(old) State.player.inventory.push(old);
+        renderInventory();
+        renderParts();
+    } else {
+        log("No matching part in inventory.", "warn");
+    }
+};
+
+document.getElementById('close-modal').onclick = () => {
+    document.getElementById('modal-overlay').style.display = 'none';
+};
+
+function log(m, type) {
+    const l = document.getElementById('log');
+    l.innerHTML = `<div class="log-msg ${type==='warn'?'log-warn':type==='good'?'log-good':''}">${m}</div>` + l.innerHTML;
+}
+
+window.addEventListener('resize', () => {
+    canvas.width = document.getElementById('canvas-wrapper').offsetWidth;
+    canvas.height = document.getElementById('canvas-wrapper').offsetHeight;
+});
+window.addEventListener('mousemove', e => {
+    const rect = canvas.getBoundingClientRect();
+    mouse.x = e.clientX - rect.left + cam.x;
+    mouse.y = e.clientY - rect.top + cam.y;
+});
+window.addEventListener('keydown', e => {
+    keys[e.key] = true;
+    if(e.key.toLowerCase() === 'e') interact();
+    if(e.key === ' ') attack();
+});
+window.addEventListener('keyup', e => keys[e.key] = false);
+
+function interact() {
+    const tx = Math.floor(State.player.x / CONFIG.tileSize);
+    const ty = Math.floor(State.player.y / CONFIG.tileSize);
+    const t = getTile(State.player.x, State.player.y);
+    const key = `${tx},${ty}`;
+
+    if(t.loot && !State.containers[key]) {
+        log("Searching container...", "info");
+        setTimeout(() => {
+            const item = spawnLoot();
+            State.player.inventory.push(item);
+            State.containers[key] = true; 
+            log(`Found: ${item.name}`, "good");
+            renderInventory();
+        }, 800);
+    } else if (State.containers[key]) {
+        log("Already looted.");
+    } else {
+        log("Nothing here.");
+    }
+}
+
+function attack() {
+    if(!State.player.equipped) { log("No weapon!", "warn"); return; }
+    const res = State.player.equipped.fire();
+    if(res.ok) {
+        log(`BANG!`);
+        const target = State.entities.find(e => Math.hypot(e.x - State.player.x, e.y - State.player.y) < 200);
+        if(target) {
+            target.hp -= res.dmg;
+            if(target.hp <= 0) {
+                State.entities = State.entities.filter(z => z !== target);
+                log("Target Neutralized.", "good");
+            }
+        }
+    } else {
+        log(res.msg, "warn");
+    }
+}
+
+canvas.width = document.getElementById('canvas-wrapper').offsetWidth;
+canvas.height = document.getElementById('canvas-wrapper').offsetHeight;
+
+const ak = new Weapon("AK-74", "AK");
+ak.parts.receiver = new WeaponPart("AK Rec", "receiver");
+ak.parts.bolt = new WeaponPart("AK Bolt", "bolt");
+ak.parts.trigger = new WeaponPart("Trigger", "trigger");
+ak.parts.spring = new WeaponPart("Spring", "spring");
+ak.parts.mag = new WeaponPart("Mag 30", "mag");
+ak.ammo = 30;
+
+State.player.inventory.push(ak);
+State.player.inventory.push(new Item("Bandage", "med", 0.1));
+renderInventory();
+
+loop();
+
+</script>
+</body>
+</html>

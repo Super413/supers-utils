@@ -1,0 +1,774 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Zombie Survival Game</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <style>
+        body {
+            font-family: 'Inter', sans-serif;
+            overflow: hidden;
+            background-color: #1a202c;
+            color: white;
+            user-select: none;
+        }
+        canvas {
+            background-color: #2d3748;
+            cursor: crosshair;
+            display: block;
+            margin: auto;
+        }
+        .ui-element {
+            background-color: rgba(0, 0, 0, 0.5);
+            padding: 8px 12px;
+            border-radius: 8px;
+        }
+        .build-item {
+            cursor: pointer;
+            border: 2px solid #4a5568;
+            transition: all 0.2s ease-in-out;
+            position: relative;
+        }
+        .build-item .tooltip {
+            visibility: hidden;
+            width: 140px;
+            background-color: #2d3748;
+            color: #fff;
+            text-align: center;
+            border-radius: 6px;
+            padding: 5px 0;
+            position: absolute;
+            z-index: 1;
+            bottom: 125%;
+            left: 50%;
+            margin-left: -70px;
+            opacity: 0;
+            transition: opacity 0.3s;
+        }
+         .build-item:hover .tooltip {
+            visibility: visible;
+            opacity: 1;
+        }
+        .build-item.selected {
+            border-color: #f56565;
+            background-color: #c53030;
+        }
+        .build-item:hover {
+            background-color: #4a5568;
+        }
+        .message-box {
+            position: absolute;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            background-color: rgba(0, 0, 0, 0.8);
+            padding: 2rem 3rem;
+            border-radius: 1rem;
+            text-align: center;
+            z-index: 100;
+        }
+        .shop-button {
+             background-color: rgba(0, 0, 0, 0.5);
+        }
+    </style>
+</head>
+<body class="w-screen h-screen flex items-center justify-center">
+
+    <!-- Game Canvas -->
+    <canvas id="gameCanvas"></canvas>
+
+    <!-- UI Elements -->
+    <div class="absolute top-4 left-4 flex flex-col space-y-2 z-10">
+        <div class="ui-element">Wood: <span id="wood-count">0</span></div>
+        <div class="ui-element">Stone: <span id="stone-count">0</span></div>
+        <div class="ui-element">Gold: <span id="gold-count">0</span></div>
+        <div class="ui-element">Weapon: <span id="weapon-level">Basic Axe</span></div>
+    </div>
+
+    <div class="absolute top-4 right-4 text-center z-10">
+        <div id="timer" class="text-4xl font-bold"></div>
+        <div id="wave-info" class="text-xl"></div>
+    </div>
+
+    <!-- Build Menu -->
+    <div id="build-menu" class="absolute bottom-4 left-1/2 -translate-x-1/2 flex space-x-1 p-2 bg-gray-800 rounded-lg shadow-lg z-10">
+        <!-- Base -->
+        <div class="build-item p-2 rounded-lg" data-structure="stash"><span class="tooltip">Stash (100W, 100S)</span>
+            <svg xmlns="http://www.w3.org/2000/svg" width="32" height="32" viewBox="0 0 24 24" fill="gold"><path d="M20 7V5c0-1.1-.9-2-2-2H6c-1.1 0-2 .9-2 2v2H2v2h2v8h16V9h2V7h-2zM6 5h12v2H6V5zm12 12H6v-6h12v6z"/><path d="M12 12.5c-1.38 0-2.5 1.12-2.5 2.5s1.12 2.5 2.5 2.5 2.5-1.12 2.5-2.5-1.12-2.5-2.5-2.5z"/></svg>
+        </div>
+        <!-- Defense -->
+        <div class="build-item p-2 rounded-lg" data-structure="wall"><span class="tooltip">Wall (10W)</span>
+             <svg xmlns="http://www.w3.org/2000/svg" width="32" height="32" fill="#A0522D" viewBox="0 0 16 16"><path d="M4 1a1 1 0 0 1 1-1h6a1 1 0 0 1 1 1v2a1 1 0 0 1-1 1H5a1 1 0 0 1-1-1V1zm7 0H5v2h6V1zm-1 5a1 1 0 0 1 1-1h2a1 1 0 0 1 1 1v2a1 1 0 0 1-1 1h-2a1 1 0 0 1-1-1V6zm3 0h-2v2h2V6zM0 6a1 1 0 0 1 1-1h2a1 1 0 0 1 1 1v2a1 1 0 0 1-1 1H1a1 1 0 0 1-1-1V6zm3 0H1v2h2V6zm-1 5a1 1 0 0 1 1-1h6a1 1 0 0 1 1 1v2a1 1 0 0 1-1 1H3a1 1 0 0 1-1-1v-2zm7 0H3v2h6v-2z"/></svg>
+        </div>
+        <div class="build-item p-2 rounded-lg" data-structure="tower"><span class="tooltip">Tower (50W, 25S)</span>
+            <svg xmlns="http://www.w3.org/2000/svg" width="32" height="32" fill="#808080" viewBox="0 0 24 24"><path d="M19.7,6.3C19.4,6.1,19,6,18.5,6h-5C13.2,6,13,5.8,13,5.5v-5C13,0.2,12.8,0,12.5,0h-1C11.2,0,11,0.2,11,0.5v5C11,5.8,10.8,6,10.5,6h-5C5,6,4.6,6.1,4.3,6.3C4.1,6.6,4,7,4,7.5v1c0,0.3,0.2,0.5,0.5,0.5h15c0.3,0,0.5-0.2,0.5-0.5v-1C20,7,19.9,6.6,19.7,6.3z M6,22h12v-2H6V22z M7,19h10v-9H7V19z"/></svg>
+        </div>
+        <div class="build-item p-2 rounded-lg" data-structure="slow_tower"><span class="tooltip">Slow Tower (75W, 50S)</span>
+            <svg xmlns="http://www.w3.org/2000/svg" width="32" height="32" fill="#38B2AC" viewBox="0 0 24 24"><path d="M12,2C6.486,2,2,6.486,2,12s4.486,10,10,10s10-4.486,10-10S17.514,2,12,2z M12,20c-4.411,0-8-3.589-8-8s3.589-8,8-8s8,3.589,8,8S16.411,20,12,20z"/><path d="M13 7h-2v5.414l3.293 3.293 1.414-1.414L13 11.586z"/></svg>
+        </div>
+        <!-- Production -->
+         <div class="build-item p-2 rounded-lg" data-structure="sawmill"><span class="tooltip">Sawmill (100W)</span>
+            <svg xmlns="http://www.w3.org/2000/svg" width="32" height="32" fill="#8B4513" viewBox="0 0 24 24"><path d="M22.5,10h-2.2L12,14.3L3.7,10H1.5C0.7,10,0,10.7,0,11.5v1C0,13.3,0.7,14,1.5,14H3l2,2l-3,3v2h2v-1.5l2-2l1,1v1.5h2v-2 l-1-1l3.3-3.3L17,17.5v2h2v-1.5l1-1l2-2V19h2v-2l-3-3l2-2h1.5c0.8,0,1.5-0.7,1.5-1.5v-1C24,10.7,23.3,10,22.5,10z"/></svg>
+        </div>
+        <div class="build-item p-2 rounded-lg" data-structure="quarry"><span class="tooltip">Quarry (100S)</span>
+            <svg xmlns="http://www.w3.org/2000/svg" width="32" height="32" fill="#696969" viewBox="0 0 24 24"><path d="M2,15.5V14h3v-2H3.5C2.7,12,2,11.3,2,10.5v-1C2,8.7,2.7,8,3.5,8H6V6H4.5C3.7,6,3,5.3,3,4.5v-1C3,2.7,3.7,2,4.5,2H8v3h2V3.5 C10,2.7,10.7,2,11.5,2h1C13.3,2,14,2.7,14,3.5V5h2V2h3.5C20.3,2,21,2.7,21,3.5v1C21,5.3,20.3,6,19.5,6H18v2h1.5 c0.8,0,1.5,0.7,1.5,1.5v1c0,0.8-0.7,1.5-1.5,1.5H18v2h3v1.5c0,0.8-0.7,1.5-1.5,1.5h-1c-0.8,0-1.5-0.7-1.5-1.5V16h-2v3.5 c0,0.8-0.7,1.5-1.5,1.5h-1c-0.8,0-1.5-0.7-1.5-1.5V16H8v1.5c0,0.8-0.7,1.5-1.5,1.5h-1C4.7,19,4,18.3,4,17.5V16H2v-0.5H2z"/></svg>
+        </div>
+    </div>
+    
+    <!-- Upgrade/Sell Menu -->
+    <div id="selection-menu" class="hidden absolute bottom-24 left-1/2 -translate-x-1/2 flex space-x-2 p-2 bg-gray-800 rounded-lg shadow-lg z-10">
+        <div id="selection-info" class="text-white p-2"></div>
+        <button id="upgrade-button" class="bg-green-500 hover:bg-green-600 text-white font-bold py-2 px-4 rounded">Upgrade</button>
+        <button id="sell-button" class="bg-red-500 hover:bg-red-600 text-white font-bold py-2 px-4 rounded">Sell</button>
+    </div>
+    
+    <!-- Shop Menu -->
+    <button id="toggle-shop-button" class="absolute bottom-20 right-4 shop-button p-3 rounded-lg shadow-lg z-10">
+        <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="white"><path d="M3 3v1.5L4.5 6v10.5c0 .8.7 1.5 1.5 1.5h12c.8 0 1.5-.7 1.5-1.5V6L21 4.5V3H3zm2 12V6h14v9H5z"/></svg>
+    </button>
+    <div id="shop-menu" class="hidden absolute bottom-36 right-4 flex flex-col space-y-2 p-2 bg-gray-800 rounded-lg shadow-lg z-10">
+        <h3 class="text-center font-bold">Weapon Shop</h3>
+        <div id="weapon-shop-info" class="text-sm"></div>
+        <button id="buy-weapon-button" class="bg-blue-500 hover:bg-blue-600 text-white font-bold py-1 px-2 rounded text-sm">Upgrade Weapon</button>
+    </div>
+
+
+    <!-- Message Box -->
+    <div id="message-box" class="message-box hidden">
+        <h2 id="message-title" class="text-3xl font-bold mb-4"></h2>
+        <p id="message-text" class="mb-6"></p>
+        <button id="message-button" class="bg-blue-500 hover:bg-blue-600 text-white font-bold py-2 px-4 rounded">Restart</button>
+    </div>
+
+
+    <script>
+        const canvas = document.getElementById('gameCanvas');
+        const ctx = canvas.getContext('2d');
+
+        // UI elements
+        const woodCountEl = document.getElementById('wood-count');
+        const stoneCountEl = document.getElementById('stone-count');
+        const goldCountEl = document.getElementById('gold-count');
+        const weaponLevelEl = document.getElementById('weapon-level');
+        const timerEl = document.getElementById('timer');
+        const waveInfoEl = document.getElementById('wave-info');
+        const buildMenuEl = document.getElementById('build-menu');
+        const selectionMenuEl = document.getElementById('selection-menu');
+        const selectionInfoEl = document.getElementById('selection-info');
+        const upgradeButton = document.getElementById('upgrade-button');
+        const sellButton = document.getElementById('sell-button');
+        const messageBox = document.getElementById('message-box');
+        const messageTitle = document.getElementById('message-title');
+        const messageText = document.getElementById('message-text');
+        const messageButton = document.getElementById('message-button');
+        const toggleShopButton = document.getElementById('toggle-shop-button');
+        const shopMenu = document.getElementById('shop-menu');
+        const weaponShopInfoEl = document.getElementById('weapon-shop-info');
+        const buyWeaponButton = document.getElementById('buy-weapon-button');
+
+
+        let worldSize = 3000;
+        let TILE_SIZE = 50;
+        let camera = { x: 0, y: 0 };
+        let mouse = { x: 0, y: 0, worldX: 0, worldY: 0 };
+        let keys = {};
+
+        let player = {
+            x: worldSize / 2,
+            y: worldSize / 2,
+            size: 20,
+            speed: 4,
+            health: 100,
+            maxHealth: 100,
+            weaponLevel: 0,
+            hitTimer: 0
+        };
+
+        let resources = {
+            wood: 0,
+            stone: 0,
+            gold: 0
+        };
+
+        let entities = [];
+        let projectiles = [];
+        let zombies = [];
+        let structures = [];
+        let animations = [];
+
+        let selectedStructure = null;
+        let buildMode = null; 
+        
+        let DAY_LENGTH = 60;
+        let NIGHT_LENGTH = 45;
+        let isDay = true;
+        let time = DAY_LENGTH;
+        let wave = 0;
+        let stashPlaced = false;
+        let gameOver = false;
+
+        const COSTS = {
+            stash: { wood: 100, stone: 100 },
+            wall: { wood: 10, stone: 0 },
+            tower: { wood: 50, stone: 25 },
+            slow_tower: { wood: 75, stone: 50},
+            sawmill: { wood: 100, stone: 0},
+            quarry: { wood: 0, stone: 100}
+        };
+
+        const WEAPONS = [
+            { name: 'Basic Axe', cost: 0, bonus: 1 },
+            { name: 'Stone Axe', cost: 100, bonus: 1.5 },
+            { name: 'Iron Axe', cost: 250, bonus: 2 },
+            { name: 'Gold Axe', cost: 500, bonus: 3 },
+            { name: 'Diamond Axe', cost: 1000, bonus: 5 },
+        ];
+        
+        function init() {
+            canvas.width = window.innerWidth;
+            canvas.height = window.innerHeight;
+            
+            player = { x: worldSize / 2, y: worldSize / 2, size: 20, speed: 4, health: 100, maxHealth: 100, weaponLevel: 0, hitTimer: 0 };
+            resources = { wood: 0, stone: 0, gold: 0 };
+            entities = [];
+            projectiles = [];
+            zombies = [];
+            structures = [];
+            animations = [];
+            selectedStructure = null;
+            buildMode = null;
+            isDay = true;
+            time = DAY_LENGTH;
+            wave = 0;
+            stashPlaced = false;
+            gameOver = false;
+            
+            camera.x = player.x - canvas.width / 2;
+            camera.y = player.y - canvas.height / 2;
+
+            spawnInitialResources();
+            updateUI();
+            
+            messageBox.classList.add('hidden');
+
+            gameLoop();
+        }
+
+        function spawnInitialResources() {
+            for (let i = 0; i < 150; i++) {
+                spawnResource('tree');
+                spawnResource('rock');
+            }
+        }
+
+        function spawnResource(type) {
+            const size = type === 'tree' ? 15 : 18;
+            entities.push({
+                type: type,
+                x: Math.random() * worldSize,
+                y: Math.random() * worldSize,
+                size: size,
+                amount: 50 + Math.random() * 50
+            });
+        }
+        
+        function gameLoop() {
+            if (gameOver) return;
+            update();
+            draw();
+            requestAnimationFrame(gameLoop);
+        }
+
+        function update() {
+            handlePlayerMovement();
+            updateCamera();
+
+            if(player.hitTimer > 0) player.hitTimer--;
+
+            // Projectiles
+            projectiles.forEach((p, index) => {
+                p.x += p.vx;
+                p.y += p.vy;
+                p.dist += Math.sqrt(p.vx*p.vx + p.vy*p.vy);
+
+                if (p.dist > p.range) {
+                    projectiles.splice(index, 1);
+                    return;
+                }
+
+                zombies.forEach(zombie => {
+                    if (getDistance(p, zombie) < zombie.size) {
+                        zombie.health -= p.damage;
+                        zombie.hitTimer = 10; // Flash for 10 frames
+                        if (p.slow) {
+                            zombie.slowTimer = 120; // Slow for 2 seconds
+                        }
+                        projectiles.splice(index, 1);
+                    }
+                });
+            });
+
+            // Structures
+            structures.forEach(s => {
+                s.flashTimer = Math.max(0, (s.flashTimer || 0) - 1);
+                if (s.type.includes('tower') && !isDay) {
+                    s.fireCooldown = (s.fireCooldown || 0) - 1;
+                    if (s.fireCooldown <= 0) {
+                        let target = findClosestZombie(s, s.range);
+                        if (target) {
+                            shootAt(s, target);
+                            s.fireCooldown = s.fireRate;
+                            s.flashTimer = 5;
+                        }
+                    }
+                }
+            });
+            
+            // Zombies
+            zombies.forEach((zombie, index) => {
+                if (zombie.hitTimer > 0) zombie.hitTimer--;
+                if (zombie.slowTimer > 0) zombie.slowTimer--;
+
+                if (zombie.health <= 0) {
+                    animations.push({type: 'death', x: zombie.x, y: zombie.y, radius: zombie.size, alpha: 1});
+                    zombies.splice(index, 1);
+                    resources.gold += 1;
+                    return;
+                }
+                
+                let target = findTarget(zombie);
+
+                if (target) {
+                    const currentSpeed = zombie.slowTimer > 0 ? zombie.speed * 0.5 : zombie.speed;
+                    const angle = Math.atan2(target.y - zombie.y, target.x - zombie.x);
+                    zombie.x += Math.cos(angle) * currentSpeed;
+                    zombie.y += Math.sin(angle) * currentSpeed;
+
+                    if (getDistance(zombie, target) < (zombie.size + (target.size || TILE_SIZE/2))) {
+                        zombie.attackCooldown = (zombie.attackCooldown || 0) - 1;
+                        if(zombie.attackCooldown <= 0) {
+                           target.health -= zombie.damage;
+                           target.hitTimer = 10;
+                           zombie.attackCooldown = 60; 
+                           if (target === player && player.health <= 0) {
+                               endGame("You were defeated!");
+                           }
+                           if (target.type === 'stash' && target.health <= 0) {
+                               endGame(`Your stash was destroyed! You survived ${wave} nights.`);
+                           }
+                        }
+                    }
+                }
+            });
+
+            structures = structures.filter(s => s.health > 0);
+            
+            // Animations
+            animations.forEach((anim, index) => {
+                anim.alpha -= 0.05;
+                if(anim.type === 'death') anim.radius += 0.5;
+                if (anim.alpha <= 0) {
+                    animations.splice(index, 1);
+                }
+            });
+        }
+        
+        function findTarget(zombie){
+            let closestTarget = null;
+            let minDistance = Infinity;
+            const targets = [...structures, player];
+            targets.forEach(target => {
+                if(target.health > 0){
+                    const d = getDistance(zombie, target);
+                    if (d < minDistance) {
+                        minDistance = d;
+                        closestTarget = target;
+                    }
+                }
+            });
+            return closestTarget;
+        }
+
+        function handlePlayerMovement() {
+            let dx = 0;
+            let dy = 0;
+            if (keys['w'] || keys['ArrowUp']) dy -= 1;
+            if (keys['s'] || keys['ArrowDown']) dy += 1;
+            if (keys['a'] || keys['ArrowLeft']) dx -= 1;
+            if (keys['d'] || keys['ArrowRight']) dx += 1;
+
+            if (dx !== 0 || dy !== 0) {
+                const magnitude = Math.sqrt(dx * dx + dy * dy);
+                dx = (dx / magnitude) * player.speed;
+                dy = (dy / magnitude) * player.speed;
+
+                const nextX = player.x + dx;
+                const nextY = player.y + dy;
+
+                if (!checkCollision(nextX, nextY, player.size)) {
+                    player.x = nextX;
+                    player.y = nextY;
+                }
+            }
+            
+            player.x = Math.max(0, Math.min(worldSize, player.x));
+            player.y = Math.max(0, Math.min(worldSize, player.y));
+        }
+
+        function checkCollision(x, y, size) {
+             for (const s of structures) {
+                 if (x + size > s.x && x - size < s.x + TILE_SIZE &&
+                     y + size > s.y && y - size < s.y + TILE_SIZE) {
+                     return true;
+                 }
+             }
+             return false;
+        }
+
+        function updateCamera() {
+            camera.x = player.x - canvas.width / 2;
+            camera.y = player.y - canvas.height / 2;
+            camera.x = Math.max(0, Math.min(worldSize - canvas.width, camera.x));
+            camera.y = Math.max(0, Math.min(worldSize - canvas.height, camera.y));
+        }
+
+        function draw() {
+            ctx.clearRect(0, 0, canvas.width, canvas.height);
+            ctx.save();
+            ctx.translate(-camera.x, -camera.y);
+
+            // Draw grid
+            ctx.strokeStyle = '#4a5568';
+            ctx.lineWidth = 1;
+            for (let x = 0; x <= worldSize; x += TILE_SIZE) { ctx.beginPath(); ctx.moveTo(x, 0); ctx.lineTo(x, worldSize); ctx.stroke(); }
+            for (let y = 0; y <= worldSize; y += TILE_SIZE) { ctx.beginPath(); ctx.moveTo(0, y); ctx.lineTo(worldSize, y); ctx.stroke(); }
+
+            // Draw entities
+            entities.forEach(e => { ctx.fillStyle = e.type === 'tree' ? '#228B22' : '#808080'; ctx.beginPath(); ctx.arc(e.x, e.y, e.size, 0, Math.PI * 2); ctx.fill(); });
+
+            // Draw player
+            ctx.fillStyle = player.hitTimer > 0 ? '#F56565' : '#4299e1';
+            ctx.beginPath();
+            ctx.arc(player.x, player.y, player.size, 0, Math.PI * 2);
+            ctx.fill();
+            drawHealthBar(player, player.size + 5);
+
+            // Draw structures
+            structures.forEach(s => {
+                if (s.type === 'stash') ctx.fillStyle = 'gold';
+                else if (s.type === 'wall') ctx.fillStyle = '#A0522D';
+                else if (s.type === 'tower') ctx.fillStyle = s.flashTimer > 0 ? '#CBD5E0' : '#A0AEC0';
+                else if (s.type === 'slow_tower') ctx.fillStyle = s.flashTimer > 0 ? '#81E6D9' : '#38B2AC';
+                else if (s.type === 'sawmill') ctx.fillStyle = '#8B4513';
+                else if (s.type === 'quarry') ctx.fillStyle = '#696969';
+
+                ctx.fillRect(s.x, s.y, TILE_SIZE, TILE_SIZE);
+                drawHealthBar(s, -10, TILE_SIZE);
+
+                if (s === selectedStructure) {
+                    ctx.strokeStyle = 'white';
+                    ctx.lineWidth = 3;
+                    ctx.strokeRect(s.x, s.y, TILE_SIZE, TILE_SIZE);
+                    if (s.range) {
+                        ctx.beginPath();
+                        ctx.arc(s.x + TILE_SIZE/2, s.y + TILE_SIZE/2, s.range, 0, Math.PI * 2);
+                        ctx.strokeStyle = 'rgba(255, 255, 255, 0.5)';
+                        ctx.lineWidth = 2;
+                        ctx.stroke();
+                    }
+                }
+            });
+
+            // Draw zombies
+            zombies.forEach(z => {
+                ctx.fillStyle = z.hitTimer > 0 ? 'white' : '#c53030';
+                if(z.slowTimer > 0) ctx.fillStyle = '#63B3ED';
+                ctx.beginPath();
+                ctx.arc(z.x, z.y, z.size, 0, Math.PI * 2);
+                ctx.fill();
+                drawHealthBar(z, z.size + 5);
+            });
+            
+            // Draw animations
+            animations.forEach(anim => {
+                if(anim.type === 'death'){
+                    ctx.fillStyle = `rgba(197, 48, 48, ${anim.alpha})`;
+                    ctx.beginPath();
+                    ctx.arc(anim.x, anim.y, anim.radius, 0, Math.PI * 2);
+                    ctx.fill();
+                }
+            });
+
+            // Draw projectiles
+            projectiles.forEach(p => { ctx.fillStyle = p.slow ? '#63B3ED' : '#ECC94B'; ctx.beginPath(); ctx.arc(p.x, p.y, p.size, 0, Math.PI * 2); ctx.fill(); });
+            
+            // Draw build preview
+            if (buildMode) {
+                const gridX = Math.floor(mouse.worldX / TILE_SIZE) * TILE_SIZE;
+                const gridY = Math.floor(mouse.worldY / TILE_SIZE) * TILE_SIZE;
+                ctx.globalAlpha = 0.5;
+                if (buildMode === 'stash') ctx.fillStyle = 'gold';
+                else if (buildMode === 'wall') ctx.fillStyle = '#A0522D';
+                else if (buildMode === 'tower') ctx.fillStyle = '#A0AEC0';
+                else if (buildMode === 'slow_tower') ctx.fillStyle = '#38B2AC';
+                else if (buildMode === 'sawmill') ctx.fillStyle = '#8B4513';
+                else if (buildMode === 'quarry') ctx.fillStyle = '#696969';
+
+                ctx.strokeStyle = canPlaceStructure(gridX, gridY) ? "green" : "red";
+                ctx.lineWidth = 3;
+                ctx.fillRect(gridX, gridY, TILE_SIZE, TILE_SIZE);
+                ctx.strokeRect(gridX, gridY, TILE_SIZE, TILE_SIZE);
+                ctx.globalAlpha = 1.0;
+            }
+
+            ctx.restore();
+        }
+        
+        function drawHealthBar(entity, yOffset, width = 40) {
+            if (entity.health < entity.maxHealth) {
+                const barWidth = width; const barHeight = 5; const x = entity.x - barWidth / 2; const y = entity.y + yOffset;
+                const healthPercentage = entity.health / entity.maxHealth;
+                ctx.fillStyle = '#4A5568'; ctx.fillRect(x, y, barWidth, barHeight);
+                ctx.fillStyle = healthPercentage > 0.5 ? '#48BB78' : healthPercentage > 0.2 ? '#F6E05E' : '#F56565';
+                ctx.fillRect(x, y, barWidth * healthPercentage, barHeight);
+            }
+        }
+        
+        function canPlaceStructure(gridX, gridY) {
+            if(buildMode === 'stash' && stashPlaced) return false;
+            for(const s of structures) { if(s.x === gridX && s.y === gridY) return false; }
+            return true;
+        }
+
+        function updateUI() {
+            woodCountEl.textContent = resources.wood;
+            stoneCountEl.textContent = resources.stone;
+            goldCountEl.textContent = resources.gold;
+            weaponLevelEl.textContent = WEAPONS[player.weaponLevel].name;
+            
+            const minutes = Math.floor(time / 60); const seconds = Math.floor(time % 60);
+            timerEl.textContent = `${minutes}:${seconds.toString().padStart(2, '0')}`;
+            
+            if (isDay) { timerEl.style.color = '#F6E05E'; waveInfoEl.textContent = `Night ${wave + 1} starts soon...`;
+            } else { timerEl.style.color = '#F56565'; waveInfoEl.textContent = `Wave ${wave} is attacking!`; }
+            
+            updateShopUI();
+        }
+        
+        function updateSelectionMenu() {
+            if (selectedStructure) {
+                selectionMenuEl.classList.remove('hidden');
+                const s = selectedStructure;
+                let upgradeCost = getUpgradeCost(s);
+                let canUpgrade = resources.wood >= upgradeCost.wood && resources.stone >= upgradeCost.stone && resources.gold >= upgradeCost.gold;
+
+                selectionInfoEl.innerHTML = `Type: ${s.type} <br> Level: ${s.level} <br> Health: ${s.health.toFixed(0)}/${s.maxHealth}`;
+                upgradeButton.innerHTML = `Upgrade (${upgradeCost.wood}W, ${upgradeCost.stone}S, ${upgradeCost.gold}G)`;
+                upgradeButton.disabled = !canUpgrade || s.level >= 5;
+                upgradeButton.style.opacity = canUpgrade && s.level < 5 ? 1 : 0.5;
+                if(s.level >= 5) upgradeButton.innerHTML = "Max Level";
+
+            } else {
+                selectionMenuEl.classList.add('hidden');
+            }
+        }
+        
+        function getUpgradeCost(structure) {
+            const level = structure.level || 1;
+            const costs = { wood: 9999, stone: 9999, gold: 9999 };
+            switch(structure.type){
+                case 'stash': Object.assign(costs, {wood: 0, stone: 0, gold: 50 * level}); break;
+                case 'wall': Object.assign(costs, {wood: 20 * level, stone: 0, gold: 0}); break;
+                case 'tower': Object.assign(costs, {wood: 30 * level, stone: 15 * level, gold: 10 * level}); break;
+                case 'slow_tower': Object.assign(costs, {wood: 40 * level, stone: 20 * level, gold: 15 * level}); break;
+                case 'sawmill': case 'quarry': Object.assign(costs, {wood: 25 * level, stone: 25 * level, gold: 0}); break;
+            }
+            return costs;
+        }
+        
+        function getSellValue(structure) {
+            let cost = {wood: 0, stone: 0, gold: 0};
+            let baseCost = COSTS[structure.type];
+            cost.wood += baseCost.wood; cost.stone += baseCost.stone;
+            for(let i=1; i < structure.level; i++) {
+                const lvlCost = getUpgradeCost({...structure, level: i});
+                cost.wood += lvlCost.wood; cost.stone += lvlCost.stone; cost.gold += lvlCost.gold;
+            }
+            return { wood: Math.floor(cost.wood * 0.75), stone: Math.floor(cost.stone * 0.75), gold: Math.floor(cost.gold * 0.75) };
+        }
+
+        // --- Event Handlers ---
+        window.addEventListener('keydown', e => {
+            keys[e.key.toLowerCase()] = true;
+            if (e.key === 'Escape') { setBuildMode(null); }
+        });
+        window.addEventListener('keyup', e => keys[e.key.toLowerCase()] = false);
+        window.addEventListener('resize', () => { canvas.width = window.innerWidth; canvas.height = window.innerHeight; updateCamera(); });
+        
+        canvas.addEventListener('mousemove', e => { mouse.x = e.clientX; mouse.y = e.clientY; mouse.worldX = e.clientX + camera.x; mouse.worldY = e.clientY + camera.y; });
+
+        canvas.addEventListener('click', e => {
+            const worldX = e.clientX + camera.x; const worldY = e.clientY + camera.y;
+            if (buildMode) {
+                const gridX = Math.floor(worldX / TILE_SIZE) * TILE_SIZE; const gridY = Math.floor(worldY / TILE_SIZE) * TILE_SIZE;
+                if (!canPlaceStructure(gridX, gridY)) return;
+                const cost = COSTS[buildMode];
+                if (resources.wood >= cost.wood && resources.stone >= cost.stone) {
+                    resources.wood -= cost.wood; resources.stone -= cost.stone;
+                    let newStructure;
+                    if (buildMode === 'stash') { newStructure = {type: 'stash', x: gridX, y: gridY, health: 500, maxHealth: 500, level: 1, goldGen: 1}; stashPlaced = true; } 
+                    else if (buildMode === 'wall') { newStructure = {type: 'wall', x: gridX, y: gridY, health: 200, maxHealth: 200, level: 1}; } 
+                    else if (buildMode === 'tower') { newStructure = {type: 'tower', x: gridX, y: gridY, health: 150, maxHealth: 150, level: 1, range: 200, damage: 5, fireRate: 45, fireCooldown: 0}; }
+                    else if (buildMode === 'slow_tower') { newStructure = {type: 'slow_tower', x: gridX, y: gridY, health: 120, maxHealth: 120, level: 1, range: 180, damage: 2, fireRate: 60, fireCooldown: 0}; }
+                    else if (buildMode === 'sawmill') { newStructure = {type: 'sawmill', x: gridX, y: gridY, health: 100, maxHealth: 100, level: 1, production: 1}; }
+                    else if (buildMode === 'quarry') { newStructure = {type: 'quarry', x: gridX, y: gridY, health: 100, maxHealth: 100, level: 1, production: 1}; }
+                    structures.push(newStructure); updateUI();
+                }
+            } else {
+                let clickedStructure = null;
+                for (const s of structures) { if (worldX >= s.x && worldX <= s.x + TILE_SIZE && worldY >= s.y && worldY <= s.y + TILE_SIZE) { clickedStructure = s; break; } }
+                if (clickedStructure) { selectedStructure = clickedStructure; updateSelectionMenu(); return; }
+                
+                selectedStructure = null; updateSelectionMenu();
+                let clickedEntity = null;
+                for(let i = entities.length - 1; i >= 0; i--) {
+                    const e = entities[i];
+                    if (getDistance({x: worldX, y: worldY}, e) < e.size && getDistance(player, e) < player.size + e.size + 30) { clickedEntity = e; break; }
+                }
+                
+                if (clickedEntity) {
+                    const amount = 25 * WEAPONS[player.weaponLevel].bonus;
+                    clickedEntity.amount -= amount;
+                    if (clickedEntity.type === 'tree') { resources.wood += Math.round(amount); } else { resources.stone += Math.round(amount); }
+                    if (clickedEntity.amount <= 0) { entities = entities.filter(e => e !== clickedEntity); spawnResource(clickedEntity.type); }
+                }
+            }
+        });
+
+        buildMenuEl.addEventListener('click', e => {
+            const item = e.target.closest('.build-item');
+            if (item) {
+                const type = item.dataset.structure;
+                if(type === 'stash' && stashPlaced) { return; }
+                setBuildMode(type);
+            }
+        });
+
+        function setBuildMode(type) {
+            buildMode = type;
+            document.querySelectorAll('.build-item').forEach(el => { el.classList.toggle('selected', el.dataset.structure === type); });
+            if (type === null) { selectedStructure = null; updateSelectionMenu(); }
+        }
+
+        upgradeButton.addEventListener('click', () => {
+            if (!selectedStructure || selectedStructure.level >= 5) return;
+            const s = selectedStructure; const cost = getUpgradeCost(s);
+            if (resources.wood >= cost.wood && resources.stone >= cost.stone && resources.gold >= cost.gold) {
+                resources.wood -= cost.wood; resources.stone -= cost.stone; resources.gold -= cost.gold;
+                s.level++; s.maxHealth *= 1.5; s.health = s.maxHealth;
+                if (s.type === 'tower') { s.damage *= 1.2; s.range *= 1.1; }
+                if (s.type === 'slow_tower') { s.damage *= 1.1; s.range *= 1.05; }
+                if (s.type === 'stash') { s.goldGen += 1; }
+                if (s.type === 'sawmill' || s.type === 'quarry') { s.production++; }
+                updateUI(); updateSelectionMenu();
+            }
+        });
+
+        sellButton.addEventListener('click', () => {
+            if (!selectedStructure) return;
+            const s = selectedStructure; const value = getSellValue(s);
+            resources.wood += value.wood; resources.stone += value.stone; resources.gold += value.gold;
+            if (s.type === 'stash') { stashPlaced = false; }
+            structures = structures.filter(st => st !== s);
+            selectedStructure = null; updateUI(); updateSelectionMenu();
+        });
+
+        toggleShopButton.addEventListener('click', () => shopMenu.classList.toggle('hidden'));
+        buyWeaponButton.addEventListener('click', () => {
+            const nextLevel = player.weaponLevel + 1;
+            if (nextLevel < WEAPONS.length) {
+                const cost = WEAPONS[nextLevel].cost;
+                if(resources.gold >= cost) {
+                    resources.gold -= cost;
+                    player.weaponLevel = nextLevel;
+                    updateUI();
+                }
+            }
+        });
+        
+        function updateShopUI() {
+            const nextLevel = player.weaponLevel + 1;
+            if (nextLevel < WEAPONS.length) {
+                const nextWeapon = WEAPONS[nextLevel];
+                weaponShopInfoEl.innerHTML = `Next: ${nextWeapon.name}<br>Cost: ${nextWeapon.cost} Gold<br>Bonus: x${nextWeapon.bonus} resources`;
+                buyWeaponButton.disabled = resources.gold < nextWeapon.cost;
+                buyWeaponButton.style.opacity = resources.gold < nextWeapon.cost ? 0.5 : 1;
+            } else {
+                weaponShopInfoEl.textContent = 'Max weapon level reached!';
+                buyWeaponButton.disabled = true;
+                buyWeaponButton.style.opacity = 0.5;
+            }
+        }
+        
+        messageButton.addEventListener('click', init);
+
+        // --- Game Logic ---
+        function getDistance(a, b) { return Math.sqrt((a.x - b.x) ** 2 + (a.y - b.y) ** 2); }
+        function findClosestZombie(from, range) {
+            let closest = null; let minDistance = range;
+            zombies.forEach(z => { const d = getDistance(from, z); if (d < minDistance) { minDistance = d; closest = z; } });
+            return closest;
+        }
+
+        function shootAt(shooter, target) {
+            const angle = Math.atan2(target.y - (shooter.y + TILE_SIZE/2), target.x - (shooter.x + TILE_SIZE/2));
+            projectiles.push({
+                x: shooter.x + TILE_SIZE/2, y: shooter.y + TILE_SIZE/2,
+                vx: Math.cos(angle) * 8, vy: Math.sin(angle) * 8,
+                damage: shooter.damage, range: shooter.range, dist: 0, size: 4,
+                slow: shooter.type === 'slow_tower'
+            });
+        }
+        
+        function spawnWave() {
+            wave++;
+            const numZombies = 5 + wave * 3; const zombieHealth = 20 + wave * 5; const zombieDamage = 2 + wave * 1; const zombieSpeed = 1 + wave * 0.1;
+            for (let i = 0; i < numZombies; i++) {
+                const angle = Math.random() * Math.PI * 2; const dist = worldSize / 2 + 300;
+                zombies.push({
+                    x: player.x + Math.cos(angle) * dist, y: player.y + Math.sin(angle) * dist,
+                    size: 15, speed: zombieSpeed, health: zombieHealth, maxHealth: zombieHealth,
+                    damage: zombieDamage, hitTimer: 0, slowTimer: 0
+                });
+            }
+        }
+        
+        function endGame(text) { gameOver = true; messageTitle.textContent = "Game Over"; messageText.textContent = text; messageBox.classList.remove('hidden'); }
+
+        // Timer and day/night cycle
+        setInterval(() => {
+            if(gameOver) return;
+            time--;
+            
+            if (isDay && stashPlaced) {
+                structures.forEach(s => {
+                    if(s.type === 'stash') resources.gold += s.goldGen;
+                    if(s.type === 'sawmill') resources.wood += s.production;
+                    if(s.type === 'quarry') resources.stone += s.production;
+                });
+            }
+
+            if (time <= 0) {
+                isDay = !isDay;
+                if (isDay) { time = DAY_LENGTH; zombies = []; } 
+                else { time = NIGHT_LENGTH; if (stashPlaced) { spawnWave(); } else { isDay = true; time = DAY_LENGTH; } }
+            }
+            updateUI();
+            updateSelectionMenu();
+        }, 1000);
+
+        init();
+    </script>
+</body>
+</html>

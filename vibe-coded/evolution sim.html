@@ -1,0 +1,697 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Neuro-Genetic Evolution Simulator</title>
+    <style>
+        :root {
+            --bg-color: #121212;
+            --panel-bg: rgba(30, 30, 30, 0.9);
+            --text-color: #e0e0e0;
+            --accent: #00ff9d;
+            --predator: #ff9100;
+            --danger: #ff4d4d;
+        }
+        
+        body {
+            margin: 0;
+            overflow: hidden;
+            background-color: var(--bg-color);
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            color: var(--text-color);
+            user-select: none;
+        }
+
+        canvas {
+            display: block;
+        }
+
+        #ui-layer {
+            position: absolute;
+            top: 10px;
+            left: 10px;
+            width: 300px;
+            pointer-events: none; 
+            overflow: visible; 
+        }
+
+        #sidebar {
+            pointer-events: auto;
+            transition: transform 0.3s cubic-bezier(0.4, 0.0, 0.2, 1);
+            position: relative;
+        }
+
+        #sidebar.slide-out {
+            transform: translateX(-320px);
+        }
+
+        .panel {
+            background: var(--panel-bg);
+            padding: 15px;
+            border-radius: 8px;
+            backdrop-filter: blur(5px);
+            border: 1px solid rgba(255, 255, 255, 0.1);
+            margin-bottom: 10px;
+            box-shadow: 0 4px 6px rgba(0,0,0,0.3);
+            transition: max-height 0.3s ease;
+            overflow: hidden;
+        }
+
+        .slide-handle {
+            position: absolute;
+            top: 10px;
+            right: -24px; 
+            width: 24px;
+            height: 40px;
+            background: var(--panel-bg);
+            border: 1px solid rgba(255, 255, 255, 0.1);
+            border-left: none;
+            border-radius: 0 4px 4px 0;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            cursor: pointer;
+            color: var(--accent);
+            font-weight: bold;
+            box-shadow: 2px 2px 5px rgba(0,0,0,0.2);
+        }
+        
+        .slide-handle:hover {
+            background: rgba(255, 255, 255, 0.1);
+        }
+
+        .panel-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 10px;
+            border-bottom: 1px solid rgba(255,255,255,0.1);
+            padding-bottom: 5px;
+        }
+
+        h1 {
+            font-size: 16px;
+            margin: 0;
+            color: var(--accent);
+            text-transform: uppercase;
+            letter-spacing: 1px;
+        }
+
+        .collapse-btn {
+            background: none;
+            border: none;
+            color: #888;
+            cursor: pointer;
+            font-weight: bold;
+            font-size: 14px;
+            padding: 0 5px;
+        }
+        .collapse-btn:hover { color: white; }
+
+        .stat-row {
+            display: flex;
+            justify-content: space-between;
+            font-size: 13px;
+            margin-bottom: 4px;
+        }
+
+        .stat-value {
+            font-family: monospace;
+            font-weight: bold;
+        }
+
+        .controls {
+            display: flex;
+            gap: 5px;
+            flex-wrap: wrap;
+        }
+
+        button {
+            background: rgba(255, 255, 255, 0.1);
+            border: 1px solid rgba(255, 255, 255, 0.2);
+            color: white;
+            padding: 5px 10px;
+            border-radius: 4px;
+            cursor: pointer;
+            font-size: 11px;
+            transition: all 0.2s;
+            flex: 1;
+        }
+
+        button:hover {
+            background: var(--accent);
+            color: black;
+        }
+
+        button.active {
+            background: var(--accent);
+            color: black;
+        }
+        
+        button.pause-active {
+            background: #ffaa00;
+            color: black;
+        }
+        
+        .spawn-btn { background: rgba(0, 255, 157, 0.1); border-color: rgba(0, 255, 157, 0.3); }
+        .spawn-pred { background: rgba(255, 145, 0, 0.1); border-color: rgba(255, 145, 0, 0.3); color: #ffb84d; }
+
+        #graph-container {
+            width: 100%;
+            height: 100px;
+            background: rgba(0,0,0,0.3);
+            margin-top: 10px;
+            border-radius: 4px;
+            position: relative;
+        }
+
+        canvas#stats-graph {
+            width: 100%;
+            height: 100%;
+        }
+
+        .legend {
+            display: flex;
+            gap: 10px;
+            font-size: 10px;
+            margin-top: 5px;
+            flex-wrap: wrap;
+        }
+        .legend-item { display: flex; align-items: center; gap: 4px; }
+        .dot { width: 8px; height: 8px; border-radius: 50%; }
+
+        #inspector {
+            display: none;
+            position: absolute;
+            bottom: 20px;
+            right: 20px;
+            width: 250px;
+            max-height: 80vh;
+            overflow-y: auto;
+        }
+        
+        .dna-bar {
+            height: 4px;
+            background: #333;
+            margin-top: 2px;
+            border-radius: 2px;
+            overflow: hidden;
+            margin-bottom: 5px;
+        }
+        .dna-fill { height: 100%; }
+        
+        #tutorial {
+            position: absolute;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            background: rgba(0,0,0,0.9);
+            padding: 30px;
+            border-radius: 12px;
+            border: 1px solid var(--accent);
+            text-align: center;
+            max-width: 400px;
+            z-index: 100;
+        }
+        #tutorial h2 { color: var(--accent); margin-top: 0; }
+        #start-btn {
+            background: var(--accent);
+            color: black;
+            border: none;
+            padding: 10px 20px;
+            font-size: 16px;
+            font-weight: bold;
+            margin-top: 15px;
+            width: 100%;
+            cursor: pointer;
+        }
+
+    </style>
+</head>
+<body>
+
+    <canvas id="world"></canvas>
+
+    <div id="ui-layer">
+        <div id="sidebar">
+            <div class="slide-handle" onclick="sim.slidePanel('sidebar')">
+                <span id="slide-icon">&lt;</span>
+            </div>
+
+            <div class="panel" id="stats-panel">
+                <div class="panel-header">
+                    <h1>Sim Stats</h1>
+                </div>
+                
+                <div class="stat-row"><span>Prey Pop:</span> <span id="stat-pop" class="stat-value">0</span></div>
+                <div class="stat-row"><span>Predator Pop:</span> <span id="stat-pred" class="stat-value" style="color:var(--predator)">0</span></div>
+                <div class="stat-row"><span>Avg Health:</span> <span id="stat-health" class="stat-value">0</span></div>
+                <div class="stat-row"><span>Time Scale:</span> <span id="stat-speed" class="stat-value">1x</span></div>
+                
+                <div id="graph-container">
+                    <canvas id="stats-graph"></canvas>
+                </div>
+                <div class="legend">
+                    <div class="legend-item"><div class="dot" style="background:cyan"></div>Prey</div>
+                    <div class="legend-item"><div class="dot" style="background:var(--predator)"></div>Predator</div>
+                </div>
+            </div>
+
+            <div class="panel">
+                <div class="panel-header">
+                    <h1>Controls</h1>
+                </div>
+                <div class="controls">
+                    <button class="spawn-btn" onclick="sim.spawnPrey()">+ Prey</button>
+                    <button class="spawn-pred" onclick="sim.spawnPredator()">+ Predator</button>
+                    <button id="pause-btn" onclick="sim.togglePause()">Pause</button>
+                    <button onclick="sim.toggleDebug()">Debug</button>
+                    <button onclick="sim.changeSpeed(1)">1x</button>
+                    <button onclick="sim.changeSpeed(5)">5x</button>
+                    <button onclick="sim.changeSpeed(20)">MAX</button>
+                    <button onclick="sim.reset()" style="background: #ff4d4d; color: white;">Reset</button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <div id="inspector" class="panel">
+        <div class="panel-header">
+            <h1>Agent Inspector</h1>
+            <button class="collapse-btn" onclick="document.getElementById('inspector').style.display='none'">x</button>
+        </div>
+        <div class="stat-row"><span>Type:</span> <span id="ins-type" class="stat-value" style="color:white"></span></div>
+        <div class="stat-row"><span>Health:</span> <span id="ins-health" class="stat-value"></span></div>
+        <div class="stat-row"><span>Age:</span> <span id="ins-age" class="stat-value"></span></div>
+        <div class="stat-row"><span>Gen:</span> <span id="ins-gen" class="stat-value"></span></div>
+        
+        <div style="margin-top: 10px; font-size: 11px; text-transform: uppercase; color: #888;">DNA Profile</div>
+        
+        <div class="stat-row"><span>Size (Cap: <span id="ins-val-cap"></span>):</span> <span id="ins-dna-size" class="stat-value"></span></div>
+        <div class="dna-bar"><div id="bar-dna-size" class="dna-fill" style="background:white"></div></div>
+
+        <div class="stat-row"><span>Food Attraction:</span> <span id="ins-dna-food" class="stat-value"></span></div>
+        <div class="dna-bar"><div id="bar-dna-food" class="dna-fill" style="background:#00ff9d"></div></div>
+
+        <div class="stat-row"><span>Poison Avoidance:</span> <span id="ins-dna-poison" class="stat-value"></span></div>
+        <div class="dna-bar"><div id="bar-dna-poison" class="dna-fill" style="background:#ff4d4d"></div></div>
+
+        <div class="stat-row"><span>Sensor Range:</span> <span id="ins-dna-range" class="stat-value"></span></div>
+        <div class="dna-bar"><div id="bar-dna-range" class="dna-fill" style="background:cyan"></div></div>
+
+        <div class="stat-row"><span>Agility (Force):</span> <span id="ins-dna-force" class="stat-value"></span></div>
+        <div class="dna-bar"><div id="bar-dna-force" class="dna-fill" style="background:white"></div></div>
+
+        <div class="stat-row"><span id="ins-lbl-repro">Repro:</span> <span id="ins-val-repro" class="stat-value" style="color:violet"></span></div>
+        <div class="dna-bar"><div id="bar-dna-repro" class="dna-fill" style="background:violet"></div></div>
+
+        <div class="stat-row"><span>Mutation Rate:</span> <span id="ins-dna-mute" class="stat-value"></span></div>
+        <div class="dna-bar"><div id="bar-dna-mute" class="dna-fill" style="background:yellow"></div></div>
+    </div>
+
+    <div id="tutorial">
+        <h2>Evolution Simulator</h2>
+        <p><b>Size Matters:</b> Larger agents can store up to 400% health, acting as biological tanks. Tiny agents are capped at 100% but move faster.</p>
+        <button id="start-btn" onclick="startSim()">Initialize System</button>
+    </div>
+
+<script>
+class Vector {
+    constructor(x, y) { this.x = x; this.y = y; }
+    add(v) { this.x += v.x; this.y += v.y; return this; }
+    sub(v) { this.x -= v.x; this.y -= v.y; return this; }
+    mult(n) { this.x *= n; this.y *= n; return this; }
+    div(n) { this.x /= n; this.y /= n; return this; }
+    mag() { return Math.sqrt(this.x * this.x + this.y * this.y); }
+    normalize() { const m = this.mag(); if (m !== 0) this.div(m); return this; }
+    limit(max) { if (this.mag() > max) { this.normalize(); this.mult(max); } return this; }
+    copy() { return new Vector(this.x, this.y); }
+    static dist(v1, v2) { return Math.sqrt(Math.pow(v2.x - v1.x, 2) + Math.pow(v2.y - v1.y, 2)); }
+    static random2D() {
+        const angle = Math.random() * Math.PI * 2;
+        return new Vector(Math.cos(angle), Math.sin(angle));
+    }
+}
+
+class DNA {
+    constructor(genes, isPredator = false) {
+        if (genes) {
+            this.genes = genes;
+        } else {
+            this.genes = {
+                foodWeight: isPredator ? 2.0 : Math.random() * 2, 
+                poisonWeight: isPredator ? -0.5 : (Math.random() * 2) - 1,
+                predatorWeight: isPredator ? 0 : Math.random() * 2 + 0.5, 
+                foodPerception: (isPredator ? Math.random() * 100 + 100 : Math.random() * 100 + 10) * 3,
+                poisonPerception: (Math.random() * 100 + 10) * 3,
+                predatorPerception: (Math.random() * 100 + 50) * 3,
+                fovAngle: (isPredator ? Math.random() * 1.0 + 0.5 : Math.random() * 2.0 + 0.2),
+                maxSpeed: isPredator ? Math.random() * 1.5 + 1.2 : Math.random() * 2 + 1,
+                maxForce: isPredator ? Math.random() * 0.15 + 0.05 : Math.random() * 0.05 + 0.02,
+                eatingRadius: isPredator ? Math.random() * 10 + 5 : 4,
+                poisonResistance: Math.random() * 0.5,
+                size: isPredator ? Math.random() * 1.0 + 1.0 : Math.random() * 2.5 + 0.5, 
+                wanderStrength: Math.random() * 0.5,
+                reproThreshold: Math.random() * 2.0 + 1.0,
+                reproChance: Math.random() * 0.7 + 0.1,
+                hungerThreshold: Math.random() * 0.5 + 0.8, 
+                mutationRate: Math.random() * 0.1 + 0.05   
+            };
+        }
+    }
+
+    copy() { return new DNA({...this.genes}); }
+
+    mutate() {
+        const rate = this.genes.mutationRate;
+        const mutateGene = (key, drift, min, max) => {
+            if (Math.random() < rate) {
+                this.genes[key] += (Math.random() * drift * 2) - drift;
+                this.genes[key] = Math.max(min, Math.min(this.genes[key], max));
+            }
+        };
+        mutateGene('foodWeight', 0.3, 0, 3);
+        mutateGene('poisonWeight', 0.3, -3, 3);
+        mutateGene('size', 0.2, 0.5, 3.0);
+        mutateGene('maxSpeed', 0.2, 0.5, 5);
+        mutateGene('reproChance', 0.05, 0.1, 0.8);
+        mutateGene('foodPerception', 30, 20, 800);
+        mutateGene('mutationRate', 0.01, 0.01, 0.5);
+    }
+}
+
+class Agent {
+    constructor(x, y, dna, isPredator = false) {
+        this.pos = new Vector(x, y);
+        this.vel = Vector.random2D(); 
+        this.acc = new Vector(0, 0);
+        this.isPredator = isPredator;
+        this.dna = dna || new DNA(null, isPredator);
+        
+        this.health = 1.0; 
+        this.r = 6 * this.dna.genes.size;
+        this.spawnOnEat = false;
+        
+        this.age = 0;
+        this.generation = 0;
+        this.wanderTheta = Math.random() * Math.PI * 2;
+    }
+
+    getMaxHealth() {
+        return 1.0 + (this.dna.genes.size - 0.5) * 1.2;
+    }
+
+    update() {
+        this.vel.add(this.acc);
+        this.vel.limit(this.dna.genes.maxSpeed);
+        this.pos.add(this.vel);
+        this.acc.mult(0); 
+        
+        const b = this.r;
+        if (this.pos.x < -b) this.pos.x = width + b;
+        if (this.pos.x > width + b) this.pos.x = -b;
+        if (this.pos.y < -b) this.pos.y = height + b;
+        if (this.pos.y > height + b) this.pos.y = -b;
+
+        // Balance: Predators consume energy faster than prey
+        const metabolicBase = this.isPredator ? 0.003 : 0.0025;
+        this.health -= metabolicBase * (this.dna.genes.size); 
+        this.age++;
+    }
+
+    applyForce(force) { this.acc.add(force); }
+
+    canSee(targetPos, limitDist) {
+        const dist = Vector.dist(this.pos, targetPos);
+        if (dist > limitDist) return false;
+        const toTarget = targetPos.copy().sub(this.pos);
+        const angleToTarget = Math.atan2(toTarget.y, toTarget.x);
+        const myAngle = Math.atan2(this.vel.y, this.vel.x);
+        let diff = angleToTarget - myAngle;
+        while (diff <= -Math.PI) diff += Math.PI*2;
+        while (diff > Math.PI) diff -= Math.PI*2;
+        return Math.abs(diff) < this.dna.genes.fovAngle / 2;
+    }
+
+    behaviors(food, poison, preyList, predatorList) {
+        let steerG, steerB, steerP = new Vector(0,0);
+        if (this.isPredator) {
+            steerG = this.eat(preyList, 0.8, this.dna.genes.foodPerception); 
+            steerB = this.eat(poison, -0.4, this.dna.genes.poisonPerception);
+        } else {
+            steerG = this.eat(food, 0.3, this.dna.genes.foodPerception);
+            if (predatorList) steerP = this.flee(predatorList, this.dna.genes.predatorPerception);
+            steerB = this.eat(poison, -0.8 * (1 - this.dna.genes.poisonResistance), this.dna.genes.poisonPerception);
+        }
+        steerG.mult(this.dna.genes.foodWeight);
+        steerB.mult(this.dna.genes.poisonWeight);
+        steerP.mult(this.dna.genes.predatorWeight);
+        if (steerG.mag() === 0 && steerB.mag() === 0 && steerP.mag() === 0) {
+            this.applyForce(this.wander());
+        } else {
+            this.applyForce(steerG); this.applyForce(steerB); this.applyForce(steerP);
+        }
+    }
+
+    flee(list, perception) {
+        let closest = null, record = Infinity;
+        for (let other of list) {
+            let d = Vector.dist(this.pos, other.pos);
+            if (d < record && d < perception && this.canSee(other.pos, perception)) {
+                record = d; closest = other.pos;
+            }
+        }
+        if (closest) {
+            let desired = this.pos.copy().sub(closest).normalize().mult(this.dna.genes.maxSpeed);
+            return desired.sub(this.vel).limit(this.dna.genes.maxForce);
+        }
+        return new Vector(0, 0);
+    }
+
+    wander() {
+        this.wanderTheta += (Math.random() * 0.2 * 2) - 0.2;
+        let circlePos = this.vel.copy().normalize().mult(80).add(this.pos);
+        let h = Math.atan2(this.vel.y, this.vel.x);
+        let offset = new Vector(25 * Math.cos(this.wanderTheta + h), 25 * Math.sin(this.wanderTheta + h));
+        return this.seek(circlePos.add(offset));
+    }
+
+    eat(list, nutrition, perception) {
+        const maxH = this.getMaxHealth();
+        if (nutrition > 0 && this.health >= maxH * 0.95) return new Vector(0, 0);
+
+        let closest = null, record = Infinity;
+        for (let i = list.length - 1; i >= 0; i--) {
+            let item = list[i];
+            let itemPos = item instanceof Agent ? item.pos : item;
+            let d = Vector.dist(this.pos, itemPos);
+            
+            if (d < this.r + this.dna.genes.eatingRadius) { 
+                list.splice(i, 1);
+                if (item instanceof Agent) {
+                    this.health += nutrition * item.dna.genes.size;
+                } else {
+                    this.health += nutrition;
+                    if (!this.isPredator && Math.random() < this.dna.genes.reproChance) this.spawnOnEat = true;
+                }
+                if (this.health > maxH) this.health = maxH;
+            } else if (d < record && this.canSee(itemPos, perception)) {
+                record = d; closest = itemPos;
+            }
+        }
+        return closest ? this.seek(closest) : new Vector(0, 0);
+    }
+
+    seek(target) {
+        let desired = target.copy().sub(this.pos).normalize().mult(this.dna.genes.maxSpeed);
+        return desired.sub(this.vel).limit(this.dna.genes.maxForce);
+    }
+
+    reproduce() {
+        let doRepro = false, litterSize = 1;
+        const maxH = this.getMaxHealth();
+        
+        if (this.isPredator) {
+            // Balance: Predators require 90% of their current max health to reproduce
+            // and have a lower base chance to check for reproduction
+            if (this.health > maxH * 0.9 && Math.random() < 0.002) {
+                doRepro = true;
+                litterSize = Math.max(1, Math.min(2, Math.floor(this.dna.genes.reproThreshold / 1.5)));
+            }
+        } else if (this.spawnOnEat) {
+            doRepro = true; this.spawnOnEat = false;
+        }
+        
+        if (doRepro) { 
+            const babies = [];
+            for(let i=0; i<litterSize; i++) {
+                const dna = this.dna.copy(); dna.mutate();
+                const child = new Agent(this.pos.x, this.pos.y, dna, this.isPredator);
+                child.generation = this.generation + 1;
+                child.health = 0.5;
+                // Cost of reproduction scales with parent size
+                this.health -= 0.4 * this.dna.genes.size;
+                babies.push(child);
+            }
+            return babies;
+        }
+        return null;
+    }
+
+    draw(ctx, isDebug, isSelected) {
+        ctx.save();
+        ctx.translate(this.pos.x, this.pos.y);
+        ctx.rotate(Math.atan2(this.vel.y, this.vel.x));
+
+        if (isSelected) {
+            ctx.beginPath(); ctx.arc(0, 0, this.dna.genes.foodPerception, -this.dna.genes.fovAngle/2, this.dna.genes.fovAngle/2);
+            ctx.strokeStyle = "rgba(255,255,255,0.2)"; ctx.stroke();
+        }
+
+        ctx.fillStyle = this.isPredator ? `rgb(255,100,0)` : `rgb(0,200,255)`;
+        if (isSelected) ctx.strokeStyle = "white"; else ctx.strokeStyle = "rgba(255,255,255,0.2)";
+        
+        ctx.beginPath();
+        if (this.isPredator) {
+            ctx.moveTo(this.r * 2.5, 0); ctx.lineTo(-this.r, -this.r); ctx.lineTo(-this.r * 0.5, 0); ctx.lineTo(-this.r, this.r);
+        } else {
+            ctx.moveTo(this.r * 2, 0); ctx.lineTo(-this.r, -this.r); ctx.lineTo(-this.r, this.r);
+        }
+        ctx.closePath(); ctx.fill(); ctx.stroke();
+        ctx.restore();
+
+        const maxH = this.getMaxHealth();
+        ctx.save();
+        ctx.translate(this.pos.x, this.pos.y + this.r + 8);
+        ctx.fillStyle = 'rgba(0,0,0,0.8)'; ctx.fillRect(-10, 0, 20, 3);
+        let hpPct = Math.max(0, Math.min(this.health / maxH, 1)); 
+        ctx.fillStyle = hpPct > 0.5 ? '#00ff9d' : hpPct > 0.2 ? '#ffaa00' : '#ff4d4d';
+        ctx.fillRect(-10, 0, 20 * hpPct, 3);
+        ctx.restore();
+    }
+}
+
+class Simulation {
+    constructor() {
+        this.canvas = document.getElementById('world');
+        this.ctx = this.canvas.getContext('2d');
+        this.agents = []; this.predators = []; this.food = []; this.poison = [];
+        this.paused = false; this.simSpeed = 1; this.frames = 0; this.selectedAgent = null;
+        this.stats = { pop: [], predPop: [] };
+        this.graphCanvas = document.getElementById('stats-graph');
+        this.graphCtx = this.graphCanvas.getContext('2d');
+        window.addEventListener('resize', () => this.resize());
+        this.canvas.addEventListener('mousedown', (e) => this.handleClick(e));
+        this.resize(); this.init(); this.loop();
+    }
+
+    resize() {
+        this.canvas.width = window.innerWidth; this.canvas.height = window.innerHeight;
+        window.width = this.canvas.width; window.height = this.canvas.height;
+    }
+
+    init() {
+        this.agents = []; this.predators = []; this.food = []; this.poison = [];
+        for (let i = 0; i < 120; i++) this.agents.push(new Agent(Math.random() * width, Math.random() * height));
+        for (let i = 0; i < 4; i++) this.predators.push(new Agent(Math.random() * width, Math.random() * height, null, true));
+        for (let i = 0; i < 80; i++) this.food.push(new Vector(Math.random() * width, Math.random() * height));
+    }
+
+    reset() { this.init(); this.graphCtx.clearRect(0,0,this.graphCanvas.width, this.graphCanvas.height); this.stats = { pop: [], predPop: [] }; }
+    spawnPrey() { this.agents.push(new Agent(Math.random() * width, Math.random() * height)); }
+    spawnPredator() { this.predators.push(new Agent(Math.random() * width, Math.random() * height, null, true)); }
+    togglePause() { this.paused = !this.paused; document.getElementById('pause-btn').innerText = this.paused ? "Resume" : "Pause"; }
+    changeSpeed(s) { this.simSpeed = s; }
+    toggleDebug() { this.debug = !this.debug; }
+    slidePanel(id) { document.getElementById(id).classList.toggle('slide-out'); }
+
+    update() {
+        if (Math.random() < 0.5) this.food.push(new Vector(Math.random() * width, Math.random() * height));
+        if (Math.random() < 0.015) this.poison.push(new Vector(Math.random() * width, Math.random() * height));
+        this.updateList(this.agents, this.food, this.poison, [], this.predators);
+        this.updateList(this.predators, [], this.poison, this.agents, []);
+    }
+
+    updateList(list, food, poison, prey, predator) {
+        for (let i = list.length - 1; i >= 0; i--) {
+            let a = list[i];
+            a.behaviors(food, poison, prey, predator);
+            a.update();
+            let kids = a.reproduce();
+            if (kids) for(let k of kids) list.push(k);
+            if (a.health <= 0) {
+                if (!a.isPredator && Math.random() < 0.4) this.food.push(a.pos.copy());
+                if (this.selectedAgent === a) this.selectedAgent = null;
+                list.splice(i, 1);
+            }
+        }
+    }
+
+    draw() {
+        this.ctx.fillStyle = '#121212'; this.ctx.fillRect(0, 0, width, height);
+        this.ctx.fillStyle = '#00ff9d'; for (let f of this.food) { this.ctx.beginPath(); this.ctx.arc(f.x, f.y, 3, 0, Math.PI * 2); this.ctx.fill(); }
+        this.ctx.fillStyle = '#ff4d4d'; for (let p of this.poison) { this.ctx.beginPath(); this.ctx.arc(p.x, p.y, 3, 0, Math.PI * 2); this.ctx.fill(); }
+        for (let a of this.agents) a.draw(this.ctx, this.debug, a === this.selectedAgent);
+        for (let p of this.predators) p.draw(this.ctx, this.debug, p === this.selectedAgent);
+        this.drawGraph();
+    }
+
+    drawGraph() {
+        if (this.frames % 30 !== 0) return;
+        this.stats.pop.push(this.agents.length);
+        this.stats.predPop.push(this.predators.length * 5); // Scaled for visibility
+        if (this.stats.pop.length > 300) { this.stats.pop.shift(); this.stats.predPop.shift(); }
+        document.getElementById('stat-pop').innerText = this.agents.length;
+        document.getElementById('stat-pred').innerText = this.predators.length;
+        if (this.selectedAgent) this.updateInspector(); else document.getElementById('inspector').style.display = 'none';
+        
+        const ctx = this.graphCtx; ctx.clearRect(0,0,this.graphCanvas.width, this.graphCanvas.height);
+        ctx.strokeStyle = "cyan"; ctx.beginPath();
+        for(let i=0; i<this.stats.pop.length; i++) ctx.lineTo(i, 100 - (this.stats.pop[i]/2)); ctx.stroke();
+        ctx.strokeStyle = "orange"; ctx.beginPath();
+        for(let i=0; i<this.stats.predPop.length; i++) ctx.lineTo(i, 100 - (this.stats.predPop[i]/2)); ctx.stroke();
+    }
+
+    handleClick(e) {
+        const mx = e.clientX, my = e.clientY;
+        let found = [...this.predators, ...this.agents].find(a => Vector.dist(new Vector(mx, my), a.pos) < 30);
+        this.selectedAgent = found;
+    }
+
+    updateInspector() {
+        const a = this.selectedAgent; document.getElementById('inspector').style.display = 'block';
+        const maxH = a.getMaxHealth();
+        document.getElementById('ins-type').innerText = a.isPredator ? "PREDATOR" : "HERBIVORE";
+        document.getElementById('ins-health').innerText = (a.health * 100).toFixed(0) + '% / ' + (maxH * 100).toFixed(0) + '%';
+        document.getElementById('ins-val-cap').innerText = (maxH * 100).toFixed(0) + '%';
+        document.getElementById('ins-age').innerText = a.age;
+        document.getElementById('ins-gen').innerText = a.generation;
+        document.getElementById('ins-dna-size').innerText = a.dna.genes.size.toFixed(2) + 'x';
+        document.getElementById('bar-dna-size').style.width = (a.dna.genes.size / 3) * 100 + '%';
+        document.getElementById('ins-dna-food').innerText = a.dna.genes.foodWeight.toFixed(2);
+        document.getElementById('ins-dna-range').innerText = a.dna.genes.foodPerception.toFixed(0);
+        
+        if (a.isPredator) {
+            document.getElementById('ins-lbl-repro').innerText = "Litter:";
+            document.getElementById('ins-val-repro').innerText = Math.floor(a.dna.genes.reproThreshold / 1.5);
+        } else {
+            document.getElementById('ins-lbl-repro').innerText = "Chance:";
+            document.getElementById('ins-val-repro').innerText = (a.dna.genes.reproChance * 100).toFixed(0) + '%';
+        }
+    }
+
+    loop() {
+        if (!this.paused) for(let i=0; i<this.simSpeed; i++) this.update();
+        this.draw(); this.frames++; requestAnimationFrame(() => this.loop());
+    }
+}
+
+let sim;
+function startSim() {
+    document.getElementById('tutorial').style.display = 'none';
+    sim = new Simulation();
+}
+</script>
+</body>
+</html>

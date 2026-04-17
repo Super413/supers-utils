@@ -1,0 +1,474 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Geo Jumper</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Poppins:wght@400;600;800&display=swap" rel="stylesheet">
+    <style>
+        /* Basic styles for the page */
+        body {
+            margin: 0;
+            padding: 0;
+            background-color: #f0f4f8;
+            font-family: 'Poppins', sans-serif;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            height: 100vh;
+            overflow: hidden;
+        }
+
+        /* Container for the game canvas and UI elements */
+        #gameContainer {
+            position: relative;
+            width: 100%;
+            max-width: 420px;
+            height: 100%;
+            max-height: 750px;
+            box-shadow: 0 10px 25px rgba(0, 0, 0, 0.1);
+            border-radius: 12px;
+            overflow: hidden;
+            background: #ffffff;
+        }
+
+        /* The game canvas itself */
+        canvas {
+            display: block;
+            width: 100%;
+            height: 100%;
+            background: linear-gradient(to top, #a1c4fd 0%, #c2e9fb 100%);
+        }
+
+        /* Overlay for UI screens (start/game over) */
+        .ui-overlay {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background-color: rgba(15, 32, 49, 0.8);
+            color: white;
+            display: flex;
+            flex-direction: column;
+            justify-content: center;
+            align-items: center;
+            text-align: center;
+            padding: 20px;
+            box-sizing: border-box;
+            transition: opacity 0.3s ease;
+        }
+
+        /* Hide overlays by default */
+        .hidden {
+            opacity: 0;
+            pointer-events: none;
+        }
+
+        /* UI headings and text */
+        .ui-overlay h1 {
+            font-size: 3.5rem;
+            margin: 0;
+            font-weight: 800;
+            text-shadow: 0 4px 8px rgba(0,0,0,0.2);
+        }
+
+        .ui-overlay p {
+            font-size: 1.2rem;
+            margin: 10px 0 30px;
+        }
+        
+        #scoreDisplay {
+            margin-top: 10px;
+            font-size: 1rem;
+            opacity: 0.7;
+        }
+
+        /* UI button styles */
+        .ui-button {
+            background: #ff7e5f;
+            background: -webkit-linear-gradient(to right, #feb47b, #ff7e5f);
+            background: linear-gradient(to right, #feb47b, #ff7e5f);
+            color: white;
+            border: none;
+            padding: 15px 35px;
+            font-size: 1.2rem;
+            font-weight: 600;
+            border-radius: 50px;
+            cursor: pointer;
+            transition: transform 0.2s ease, box-shadow 0.2s ease;
+            box-shadow: 0 4px 15px rgba(255, 126, 95, 0.4);
+        }
+
+        .ui-button:hover {
+            transform: translateY(-3px);
+            box-shadow: 0 6px 20px rgba(255, 126, 95, 0.6);
+        }
+        
+        /* In-game score display */
+        #inGameScore {
+            position: absolute;
+            top: 20px;
+            left: 50%;
+            transform: translateX(-50%);
+            font-size: 2.5rem;
+            font-weight: 800;
+            color: white;
+            text-shadow: 0 2px 4px rgba(0,0,0,0.2);
+            opacity: 0;
+            transition: opacity 0.3s ease;
+        }
+    </style>
+</head>
+<body>
+
+    <div id="gameContainer">
+        <canvas id="gameCanvas"></canvas>
+        <div id="inGameScore">0</div>
+
+        <!-- Start Screen -->
+        <div id="startScreen" class="ui-overlay">
+            <h1>Geo Jumper</h1>
+            <p>Use your mouse to move. Avoid brown platforms!<br>Green platforms give you a super boost!</p>
+            <button id="startButton" class="ui-button">Start Game</button>
+        </div>
+
+        <!-- Game Over Screen -->
+        <div id="gameOverScreen" class="ui-overlay hidden">
+            <h1>Game Over</h1>
+            <p>Your score:</p>
+            <h1 id="finalScore">0</h1>
+            <p id="highScoreDisplay" style="margin-top: 20px;"></p>
+            <button id="restartButton" class="ui-button">Play Again</button>
+        </div>
+    </div>
+
+    <script>
+        // --- DOM Elements ---
+        const canvas = document.getElementById('gameCanvas');
+        const ctx = canvas.getContext('2d');
+        const gameContainer = document.getElementById('gameContainer');
+        const startScreen = document.getElementById('startScreen');
+        const gameOverScreen = document.getElementById('gameOverScreen');
+        const startButton = document.getElementById('startButton');
+        const restartButton = document.getElementById('restartButton');
+        const finalScoreEl = document.getElementById('finalScore');
+        const inGameScoreEl = document.getElementById('inGameScore');
+        const highScoreDisplayEl = document.getElementById('highScoreDisplay');
+
+        // --- Game Configuration ---
+        let canvasWidth, canvasHeight;
+        let gameState = 'start'; // 'start', 'playing', 'gameOver'
+
+        // Player properties
+        const player = {
+            x: 0,
+            y: 0,
+            width: 30,
+            height: 30,
+            dx: 0,
+            dy: 0,
+            jumpPower: -18,
+            superJumpPower: -30, // For bouncy platforms
+            gravity: 0.7
+        };
+        
+        // Game variables
+        let platforms = [];
+        let particles = []; // For jump effects
+        let score = 0;
+        let highScore = localStorage.getItem('geoJumperHighScore') || 0;
+        const platformSettings = {
+            width: 85,
+            height: 20,
+            count: 20,
+            minYSpacing: 80,
+            maxYSpacing: 110
+        };
+
+        // --- Game Setup ---
+
+        // Resize the canvas to fit the container
+        function resizeCanvas() {
+            canvasWidth = gameContainer.clientWidth;
+            canvasHeight = gameContainer.clientHeight;
+            canvas.width = canvasWidth;
+            canvas.height = canvasHeight;
+        }
+
+        // Initialize the game state
+        function init() {
+            resizeCanvas();
+
+            // Center the player
+            player.x = canvasWidth / 2 - player.width / 2;
+            player.y = canvasHeight - 100;
+            player.dy = player.jumpPower;
+
+            // Reset score and game state
+            score = 0;
+            inGameScoreEl.textContent = '0';
+            platforms = [];
+
+            // Create initial platforms
+            let lastY = canvasHeight - platformSettings.height;
+            platforms.push({ x: canvasWidth / 2 - platformSettings.width / 2, y: lastY, width: platformSettings.width, height: platformSettings.height, type: 'static' });
+
+            // Generate procedural platforms
+            while (platforms.length < platformSettings.count) {
+                let newY = lastY - (platformSettings.minYSpacing + Math.random() * (platformSettings.maxYSpacing - platformSettings.minYSpacing));
+                generatePlatform(newY);
+                lastY = newY;
+            }
+        }
+        
+        function generatePlatform(yPos) {
+             const x = Math.random() * (canvasWidth - platformSettings.width);
+             let type = 'static';
+             const rand = Math.random();
+
+             if (rand < 0.1) { // 10% chance
+                type = 'breaking';
+             } else if (rand < 0.2) { // 10% chance
+                type = 'bouncy';
+             } else if (rand < 0.35) { // 15% chance
+                type = 'moving';
+             }
+             // else it remains 'static'
+
+             const platform = {
+                x: x,
+                y: yPos,
+                width: platformSettings.width,
+                height: platformSettings.height,
+                type: type,
+                isBroken: false
+             };
+             if (type === 'moving') {
+                platform.dx = (Math.random() < 0.5 ? -1 : 1) * (1 + Math.random());
+             }
+             platforms.push(platform);
+        }
+
+        // --- Particle System ---
+        function createJumpParticles(x, y, color) {
+            const count = 5 + Math.floor(Math.random() * 5);
+            for (let i = 0; i < count; i++) {
+                particles.push({
+                    x: x,
+                    y: y,
+                    dx: (Math.random() - 0.5) * 4,
+                    dy: Math.random() * -4,
+                    size: Math.random() * 3 + 2,
+                    life: 30,
+                    color: color
+                });
+            }
+        }
+
+
+        // --- Game Loop ---
+
+        function update() {
+            if (gameState !== 'playing') return;
+
+            // Update particles
+            for (let i = particles.length - 1; i >= 0; i--) {
+                const p = particles[i];
+                p.x += p.dx;
+                p.y += p.dy;
+                p.dy += 0.1; // particle gravity
+                p.life--;
+                if (p.life <= 0) {
+                    particles.splice(i, 1);
+                }
+            }
+
+
+            // Apply gravity
+            player.dy += player.gravity;
+            player.y += player.dy;
+
+            // Prevent falling off the sides
+            if (player.x < 0) player.x = 0;
+            if (player.x + player.width > canvasWidth) player.x = canvasWidth - player.width;
+            
+            // Camera movement and score calculation
+            const cameraThreshold = canvasHeight / 2.5;
+            if (player.y < cameraThreshold && player.dy < 0) {
+                const scrollOffset = cameraThreshold - player.y;
+                player.y = cameraThreshold;
+                platforms.forEach(p => p.y += scrollOffset);
+                score += Math.floor(scrollOffset);
+                inGameScoreEl.textContent = score;
+
+                // Add new platforms at the top
+                const topPlatformY = platforms[platforms.length - 1].y;
+                if (topPlatformY > -platformSettings.maxYSpacing) {
+                     generatePlatform(topPlatformY - (platformSettings.minYSpacing + Math.random() * (platformSettings.maxYSpacing - platformSettings.minYSpacing)));
+                }
+            }
+
+            // Platform collision detection
+            platforms.forEach(platform => {
+                // Update breaking platforms first
+                if (platform.isBroken) {
+                    platform.y += 8; // Make them fall
+                    return; // Skip collision checks for broken platforms
+                }
+                
+                // Only check for collision if player is falling
+                if (player.dy > 0 &&
+                    player.x < platform.x + platform.width &&
+                    player.x + player.width > platform.x &&
+                    player.y + player.height > platform.y &&
+                    player.y + player.height < platform.y + platform.height + 10) { // Small tolerance
+                    
+                    switch(platform.type) {
+                        case 'bouncy':
+                            player.dy = player.superJumpPower;
+                            createJumpParticles(player.x + player.width / 2, platform.y, '#50c878');
+                            break;
+                        case 'breaking':
+                            platform.isBroken = true;
+                            // Small jump, but still a jump
+                            player.dy = player.jumpPower * 0.8;
+                            createJumpParticles(player.x + player.width / 2, platform.y, '#A0522D');
+                            break;
+                        default: // static and moving
+                            player.dy = player.jumpPower;
+                            createJumpParticles(player.x + player.width / 2, platform.y, '#333');
+                    }
+                }
+                
+                // Update moving platforms
+                if(platform.type === 'moving') {
+                    platform.x += platform.dx;
+                    if(platform.x < 0 || platform.x + platform.width > canvasWidth) {
+                        platform.dx *= -1;
+                    }
+                }
+            });
+            
+            // Remove off-screen platforms
+            platforms = platforms.filter(p => p.y < canvasHeight);
+
+            // Game over condition
+            if (player.y > canvasHeight) {
+                endGame();
+            }
+        }
+
+        function draw() {
+            // Clear canvas
+            ctx.clearRect(0, 0, canvasWidth, canvasHeight);
+
+            // Draw particles
+            particles.forEach(p => {
+                ctx.fillStyle = p.color;
+                ctx.globalAlpha = p.life / 30; // Fade out
+                ctx.fillRect(p.x, p.y, p.size, p.size);
+                ctx.globalAlpha = 1; // Reset alpha
+            });
+
+
+            // Draw platforms
+            platforms.forEach(platform => {
+                if (platform.isBroken) {
+                     ctx.fillStyle = '#A0522D';
+                     // Fade out falling platforms
+                     ctx.globalAlpha = Math.max(0, (canvasHeight - platform.y) / 200);
+                     ctx.fillRect(platform.x, platform.y, platform.width, platform.height);
+                     ctx.globalAlpha = 1.0;
+                } else {
+                    switch(platform.type) {
+                        case 'moving':
+                            ctx.fillStyle = '#ff7e5f';
+                            break;
+                        case 'bouncy':
+                            ctx.fillStyle = '#50c878'; // Emerald green
+                            break;
+                        case 'breaking':
+                            ctx.fillStyle = '#A0522D'; // Sienna brown
+                            break;
+                        default:
+                            ctx.fillStyle = '#333';
+                    }
+                    ctx.fillRect(platform.x, platform.y, platform.width, platform.height);
+
+                    // Draw spring detail on bouncy platforms
+                    if (platform.type === 'bouncy') {
+                        ctx.strokeStyle = 'rgba(255,255,255,0.5)';
+                        ctx.lineWidth = 3;
+                        ctx.beginPath();
+                        ctx.moveTo(platform.x + 15, platform.y + 15);
+                        ctx.lineTo(platform.x + 15, platform.y + 5);
+                        ctx.moveTo(platform.x + platform.width / 2, platform.y + 15);
+                        ctx.lineTo(platform.x + platform.width / 2, platform.y + 5);
+                        ctx.moveTo(platform.x + platform.width - 15, platform.y + 15);
+                        ctx.lineTo(platform.x + platform.width - 15, platform.y + 5);
+                        ctx.stroke();
+                    }
+                }
+            });
+
+            // Draw player
+            ctx.fillStyle = '#feb47b';
+            ctx.fillRect(player.x, player.y, player.width, player.height);
+            
+            // Loop
+            requestAnimationFrame(draw);
+        }
+
+        function gameLoop() {
+            update();
+            // Drawing is handled by a separate loop to keep it smooth
+            requestAnimationFrame(gameLoop);
+        }
+
+        // --- Game State Management ---
+
+        function startGame() {
+            gameState = 'playing';
+            startScreen.classList.add('hidden');
+            gameOverScreen.classList.add('hidden');
+            inGameScoreEl.style.opacity = 1;
+            init();
+        }
+
+        function endGame() {
+            gameState = 'gameOver';
+            inGameScoreEl.style.opacity = 0;
+            
+            if (score > highScore) {
+                highScore = score;
+                localStorage.setItem('geoJumperHighScore', highScore);
+            }
+            
+            finalScoreEl.textContent = score;
+            highScoreDisplayEl.textContent = `High Score: ${highScore}`;
+            gameOverScreen.classList.remove('hidden');
+        }
+
+        // --- Event Listeners ---
+        
+        // Mouse controls for player movement
+        gameContainer.addEventListener('mousemove', (e) => {
+            const rect = canvas.getBoundingClientRect();
+            const mouseX = e.clientX - rect.left;
+            player.x = mouseX - player.width / 2;
+        });
+
+        startButton.addEventListener('click', startGame);
+        restartButton.addEventListener('click', startGame);
+        window.addEventListener('resize', init);
+
+        // --- Initial Call ---
+        init();
+        draw();
+        gameLoop();
+    </script>
+</body>
+</html>

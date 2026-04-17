@@ -1,0 +1,1192 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>IRON HORIZON: Combined Arms RTS</title>
+    <style>
+        :root {
+            --bg-color: #0f1115;
+            --ui-bg: rgba(10, 15, 20, 0.95);
+            --ui-border: #3a4b5c;
+            --text-main: #aec2d6;
+            --accent-blue: #00bcd4;
+            --accent-red: #ff4444;
+            --accent-green: #4caf50;
+            --accent-warn: #ffbb33;
+        }
+
+        body {
+            margin: 0;
+            overflow: hidden;
+            background-color: var(--bg-color);
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            color: var(--text-main);
+            user-select: none;
+        }
+
+        /* Scanline effect for military vibe */
+        body::after {
+            content: " ";
+            display: block;
+            position: absolute;
+            top: 0; left: 0; bottom: 0; right: 0;
+            background: linear-gradient(rgba(18, 16, 16, 0) 50%, rgba(0, 0, 0, 0.1) 50%);
+            background-size: 100% 4px;
+            z-index: 10;
+            pointer-events: none;
+        }
+
+        #game-container {
+            position: relative;
+            width: 100vw;
+            height: 100vh;
+        }
+
+        canvas {
+            display: block;
+            cursor: crosshair;
+        }
+
+        /* UI Overlays */
+        .ui-panel {
+            position: absolute;
+            background: var(--ui-bg);
+            border: 1px solid var(--ui-border);
+            padding: 10px;
+            pointer-events: auto; /* Allow clicking UI */
+            box-shadow: 0 0 10px rgba(0,0,0,0.5);
+            z-index: 20;
+        }
+
+        #top-bar {
+            top: 0; left: 0; right: 0;
+            height: 40px;
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            padding: 0 20px;
+            border-bottom: 1px solid var(--accent-blue);
+        }
+
+        #resources {
+            display: flex;
+            gap: 20px;
+            font-weight: bold;
+            font-family: monospace;
+            font-size: 16px;
+        }
+
+        .res-item span { color: var(--accent-blue); }
+
+        #bottom-bar {
+            bottom: 0; left: 0; right: 0;
+            height: 140px;
+            display: flex;
+            border-top: 1px solid var(--ui-border);
+        }
+
+        #minimap-container {
+            width: 140px;
+            height: 140px;
+            border-right: 1px solid var(--ui-border);
+            background: #000;
+            position: relative;
+        }
+        
+        #minimap { width: 100%; height: 100%; }
+
+        #selection-panel {
+            flex-grow: 1;
+            padding: 10px;
+            display: flex;
+            flex-direction: column;
+            gap: 5px;
+        }
+
+        #unit-info {
+            font-size: 14px;
+            margin-bottom: 5px;
+            border-bottom: 1px solid #333;
+            padding-bottom: 5px;
+        }
+
+        #build-panel {
+            width: 350px;
+            border-left: 1px solid var(--ui-border);
+            padding: 10px;
+            display: grid;
+            grid-template-columns: repeat(3, 1fr);
+            gap: 5px;
+            overflow-y: auto;
+        }
+
+        .btn {
+            background: #1e252e;
+            border: 1px solid #3a4b5c;
+            color: #aec2d6;
+            padding: 5px;
+            font-size: 11px;
+            cursor: pointer;
+            text-align: center;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            transition: all 0.2s;
+            height: 60px;
+        }
+
+        .btn:hover { background: #2c3642; border-color: var(--accent-blue); }
+        .btn:active { background: var(--accent-blue); color: #000; }
+        .btn.disabled { opacity: 0.5; cursor: not-allowed; filter: grayscale(1); }
+
+        .btn-icon { font-size: 16px; margin-bottom: 2px; }
+        .btn-cost { font-size: 9px; color: var(--accent-warn); }
+
+        #notifications {
+            position: absolute;
+            top: 60px;
+            left: 20px;
+            pointer-events: none;
+            display: flex;
+            flex-direction: column;
+            gap: 5px;
+        }
+
+        .note {
+            background: rgba(0, 0, 0, 0.7);
+            color: #fff;
+            padding: 5px 10px;
+            border-left: 3px solid var(--accent-blue);
+            font-size: 12px;
+            animation: fadeOut 4s forwards;
+        }
+
+        @keyframes fadeOut {
+            0% { opacity: 1; }
+            80% { opacity: 1; }
+            100% { opacity: 0; }
+        }
+
+        /* Start Screen */
+        #start-screen {
+            position: absolute;
+            top: 0; left: 0; width: 100%; height: 100%;
+            background: rgba(15, 17, 21, 0.95);
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            z-index: 100;
+        }
+
+        h1 { font-size: 48px; margin: 0 0 20px 0; color: var(--accent-blue); text-transform: uppercase; letter-spacing: 5px; }
+        .mission-brief { max-width: 600px; text-align: center; color: #8899aa; margin-bottom: 30px; line-height: 1.6; }
+        #start-btn { padding: 15px 40px; font-size: 20px; font-weight: bold; background: var(--accent-blue); color: #000; border: none; cursor: pointer; }
+        #start-btn:hover { background: #fff; }
+
+    </style>
+</head>
+<body>
+
+<div id="game-container">
+    <canvas id="gameCanvas"></canvas>
+    
+    <div id="top-bar" class="ui-panel">
+        <div id="resources">
+            <div class="res-item">CMD: <span id="res-cmd">0</span></div>
+            <div class="res-item">FUEL: <span id="res-fuel">0</span></div>
+            <div class="res-item">AMMO: <span id="res-ammo">0</span></div>
+            <div class="res-item">PWR: <span id="res-pop">0/50</span></div>
+        </div>
+        <div id="timer">OP_TIME: 00:00</div>
+    </div>
+
+    <div id="notifications"></div>
+
+    <div id="bottom-bar" class="ui-panel">
+        <div id="minimap-container">
+            <canvas id="minimap"></canvas>
+        </div>
+        <div id="selection-panel">
+            <div id="unit-info">SYSTEM READY... AWAITING SELECTION</div>
+            <div id="unit-details" style="font-size: 12px; color: #8899aa;"></div>
+        </div>
+        <div id="build-panel">
+            <!-- Buttons generated by JS -->
+        </div>
+    </div>
+
+    <div id="start-screen">
+        <h1>Iron Horizon</h1>
+        <p class="mission-brief">
+            <strong style="color:white">DOCTRINE:</strong> Combined Arms & Logistics.<br><br>
+            Secure the sector. Manage Fuel and Ammo supplies. Unsupplied units cannot move or fire.<br>
+            Control Supply Depots to generate resources. Build Forward Operating Bases (FOBs) to extend supply lines.<br>
+            <br>
+            <strong>CONTROLS:</strong> WASD to Pan | Scroll to Zoom | Left Click Select | Right Click Move/Attack
+        </p>
+        <button id="start-btn">INITIATE OPERATION</button>
+    </div>
+</div>
+
+<script>
+/**
+ * IRON HORIZON ENGINE
+ * A condensed ECS-lite RTS engine in a single file.
+ */
+
+// --- CONSTANTS & CONFIG ---
+
+const TILE_SIZE = 40;
+const WORLD_WIDTH = 3000;
+const WORLD_HEIGHT = 2000;
+
+// Terrain Types
+const TERRAIN = {
+    PLAINS: 0,
+    FOREST: 1, // High cover, slow move
+    ROAD: 2,   // No cover, fast move
+    URBAN: 3,  // Med cover, med speed
+    WATER: 4   // Air only
+};
+
+const TEAMS = {
+    PLAYER: 1,
+    ENEMY: 2,
+    NEUTRAL: 0
+};
+
+// Unit & Building Stats
+const DB = {
+    // BUILDINGS
+    'hq': { type: 'building', name: 'Command HQ', cost: {cmd:0, fuel:0}, hp: 2000, vision: 500, buildTime: 0, color: '#00bcd4', symbol: '☗', produces: ['logi', 'rifle'] },
+    'depot': { type: 'building', name: 'Supply Depot', cost: {cmd:100, fuel:0}, hp: 800, vision: 300, income: {cmd: 10, fuel: 5, ammo: 5}, buildTime: 10, color: '#ffbb33', symbol: '$' },
+    'factory': { type: 'building', name: 'War Factory', cost: {cmd:200, fuel:50}, hp: 1200, vision: 200, buildTime: 15, color: '#795548', symbol: '⚒', produces: ['rpg', 'humvee', 'tank', 'arty'] },
+    'airfield': { type: 'building', name: 'Airfield', cost: {cmd:300, fuel:100}, hp: 1000, vision: 600, buildTime: 20, color: '#607d8b', symbol: '✈', produces: ['drone', 'heli'] },
+    'turret': { type: 'building', name: 'Defense Turret', cost: {cmd:150, fuel:0}, hp: 600, vision: 400, range: 350, damage: 15, reload: 20, buildTime: 8, color: '#9e9e9e', symbol: '✛', ammoUsage: 1 },
+    'fob': { type: 'building', name: 'F.O.B.', cost: {cmd:100, fuel:50}, hp: 500, vision: 200, buildTime: 8, range: 250, color: '#4caf50', symbol: '+', isSupply: true },
+
+    // UNITS - GROUND
+    'rifle': { type: 'unit', layer: 0, name: 'Rifle Squad', cost: {cmd:50, fuel:0}, pop: 1, hp: 60, speed: 1.5, turnSpeed: 0.2, vision: 300, range: 200, damage: 4, reload: 30, armor: 0, ammoCap: 100, fuelCap: 999, ammoUse: 1, fuelUse: 0, icon: '●', desc: "Basic infantry. Good in cover." },
+    'rpg': { type: 'unit', layer: 0, name: 'AT Team', cost: {cmd:80, fuel:0}, pop: 1, hp: 50, speed: 1.4, turnSpeed: 0.2, vision: 300, range: 250, damage: 40, reload: 120, armor: 0, ammoCap: 10, fuelCap: 999, ammoUse: 1, fuelUse: 0, icon: '▲', desc: "Anti-Tank infantry. Slow fire rate." },
+    'humvee': { type: 'unit', layer: 0, name: 'Recon LAV', cost: {cmd:120, fuel:40}, pop: 2, hp: 150, speed: 3.5, turnSpeed: 0.1, vision: 500, range: 250, damage: 8, reload: 10, armor: 1, ammoCap: 200, fuelCap: 500, ammoUse: 1, fuelUse: 0.5, icon: '▭', desc: "Fast scout. Detects stealth." },
+    'tank': { type: 'unit', layer: 0, name: 'MBT "Titan"', cost: {cmd:300, fuel:100}, pop: 4, hp: 500, speed: 1.8, turnSpeed: 0.05, vision: 350, range: 400, damage: 60, reload: 150, armor: 4, ammoCap: 30, fuelCap: 800, ammoUse: 1, fuelUse: 1.0, icon: '▇', desc: "Main Battle Tank. Heavy armor/damage." },
+    'arty': { type: 'unit', layer: 0, name: 'Mobile Arty', cost: {cmd:400, fuel:80}, pop: 3, hp: 150, speed: 1.2, turnSpeed: 0.05, vision: 200, range: 900, damage: 80, reload: 300, armor: 1, ammoCap: 15, fuelCap: 600, ammoUse: 1, fuelUse: 0.8, icon: '☖', desc: "Long range siege. Inaccurate vs moving." },
+    'logi': { type: 'unit', layer: 0, name: 'Supply Truck', cost: {cmd:100, fuel:100}, pop: 2, hp: 200, speed: 2.5, turnSpeed: 0.1, vision: 300, range: 150, damage: 0, reload: 0, armor: 1, ammoCap: 0, fuelCap: 1500, ammoUse: 0, fuelUse: 0.5, icon: '■', desc: "Mobile supply point. Refuels nearby units." , isSupply: true},
+
+    // UNITS - AIR
+    'heli': { type: 'unit', layer: 1, name: 'Attack Heli', cost: {cmd:350, fuel:200}, pop: 3, hp: 250, speed: 3.0, turnSpeed: 0.15, vision: 600, range: 350, damage: 15, reload: 10, armor: 0, ammoCap: 200, fuelCap: 600, ammoUse: 1, fuelUse: 1.5, icon: '✖', desc: "Air support. Ignores terrain." },
+    'drone': { type: 'unit', layer: 1, name: 'UAV Scout', cost: {cmd:100, fuel:50}, pop: 1, hp: 50, speed: 4.0, turnSpeed: 0.2, vision: 800, range: 0, damage: 0, reload: 0, armor: 0, ammoCap: 0, fuelCap: 400, ammoUse: 0, fuelUse: 0.5, icon: '✈', desc: "High speed scout. No weapons." }
+};
+
+// --- GLOBAL STATE ---
+
+const canvas = document.getElementById('gameCanvas');
+const ctx = canvas.getContext('2d', { alpha: false });
+const minimapCanvas = document.getElementById('minimap');
+const minimapCtx = minimapCanvas.getContext('2d');
+
+let gameState = {
+    camera: { x: 0, y: 0, zoom: 1 },
+    resources: { cmd: 500, fuel: 500, ammo: 500, pop: 0, maxPop: 50 },
+    aiResources: { cmd: 500, fuel: 500 }, // AI Economy
+    entities: [],
+    particles: [],
+    selection: [],
+    terrain: [], // 2D array
+    tick: 0,
+    startTime: Date.now(),
+    gameOver: false
+};
+
+const input = {
+    keys: {},
+    mouse: { x: 0, y: 0, worldX: 0, worldY: 0, leftDown: false, rightDown: false, dragStart: null }
+};
+
+// --- UTILITIES ---
+
+function dist(x1, y1, x2, y2) { return Math.hypot(x2 - x1, y2 - y1); }
+function clamp(val, min, max) { return Math.min(Math.max(val, min), max); }
+function getTerrain(x, y) {
+    let tx = Math.floor(x / TILE_SIZE);
+    let ty = Math.floor(y / TILE_SIZE);
+    if (tx < 0 || tx >= WORLD_WIDTH/TILE_SIZE || ty < 0 || ty >= WORLD_HEIGHT/TILE_SIZE) return TERRAIN.PLAINS;
+    return gameState.terrain[ty][tx];
+}
+
+// --- CLASSES ---
+
+class Entity {
+    constructor(type, x, y, team) {
+        this.id = Math.random().toString(36).substr(2, 9);
+        this.def = DB[type];
+        this.type = this.def.type;
+        this.key = type;
+        this.x = x;
+        this.y = y;
+        this.z = this.def.layer || 0; // 0 Ground, 1 Air
+        this.team = team;
+        this.hp = this.def.hp;
+        this.maxHp = this.def.hp;
+        this.angle = 0;
+        this.dead = false;
+        
+        // Logistics
+        this.ammo = this.def.ammoCap || 0;
+        this.fuel = this.def.fuelCap || 0;
+        this.isSupply = this.def.isSupply || false;
+    }
+}
+
+class Unit extends Entity {
+    constructor(type, x, y, team) {
+        super(type, x, y, team);
+        this.target = null; // Entity ID
+        this.moveTarget = null; // {x, y}
+        this.cooldown = 0;
+        this.state = 'IDLE'; // IDLE, MOVE, ATTACK, RESUPPLY
+        this.radius = 12;
+    }
+
+    update() {
+        if (this.dead) return;
+
+        // Logistics check
+        let hasFuel = this.fuel > 0 || this.def.fuelCap === 999;
+        let hasAmmo = this.ammo > 0 || this.def.damage === 0;
+        let moveSpeed = this.def.speed;
+
+        // Terrain modifiers
+        if (this.z === 0) {
+            let t = getTerrain(this.x, this.y);
+            if (t === TERRAIN.FOREST) moveSpeed *= 0.6;
+            if (t === TERRAIN.ROAD) moveSpeed *= 1.5;
+            if (t === TERRAIN.WATER) moveSpeed *= 0.2; // Amphibious?
+        }
+
+        // Behavior State Machine
+        
+        // 1. Combat Scanning
+        if (this.def.damage > 0 && this.cooldown <= 0 && hasAmmo) {
+            // Simple robust targeting: Find closest enemy in range
+            let bestTarget = null;
+            let bestDist = this.def.range;
+
+            for (let e of gameState.entities) {
+                if (e.team !== this.team && !e.dead && e.z === this.z) { // Simple Z check: Ground shoots Ground
+                    let d = dist(this.x, this.y, e.x, e.y);
+                    if (d < bestDist) {
+                        bestDist = d;
+                        bestTarget = e;
+                    }
+                }
+            }
+            if (bestTarget) {
+                this.attack(bestTarget);
+            }
+        }
+        if (this.cooldown > 0) this.cooldown--;
+
+        // 2. Movement
+        if (this.moveTarget && hasFuel) {
+            let dx = this.moveTarget.x - this.x;
+            let dy = this.moveTarget.y - this.y;
+            let d = Math.hypot(dx, dy);
+
+            if (d > 10) {
+                let targetAngle = Math.atan2(dy, dx);
+                // Smooth rotation
+                let diff = targetAngle - this.angle;
+                while (diff < -Math.PI) diff += Math.PI * 2;
+                while (diff > Math.PI) diff -= Math.PI * 2;
+                this.angle += Math.sign(diff) * Math.min(Math.abs(diff), this.def.turnSpeed);
+
+                this.x += Math.cos(this.angle) * moveSpeed;
+                this.y += Math.sin(this.angle) * moveSpeed;
+
+                // Fuel burn
+                if (gameState.tick % 60 === 0 && this.def.fuelUse > 0) {
+                    this.fuel -= this.def.fuelUse;
+                }
+            } else {
+                this.moveTarget = null; // Arrived
+            }
+        }
+
+        // 3. Resupply Logic (Passive)
+        if (this.fuel < this.def.fuelCap || this.ammo < this.def.ammoCap) {
+            // Check for nearby supplier
+            for (let e of gameState.entities) {
+                if (e.team === this.team && e.isSupply && dist(this.x, this.y, e.x, e.y) < (e.def.range || 200)) {
+                    // Refill rate
+                    this.fuel = Math.min(this.fuel + 5, this.def.fuelCap);
+                    this.ammo = Math.min(this.ammo + 2, this.def.ammoCap);
+                    // Visualize
+                    if (Math.random() < 0.1) spawnParticle(this.x, this.y, 'lime', 2);
+                }
+            }
+        }
+    }
+
+    attack(target) {
+        // Face target
+        this.angle = Math.atan2(target.y - this.y, target.x - this.x);
+        
+        // Fire
+        this.cooldown = this.def.reload;
+        this.ammo -= this.def.ammoUse;
+
+        // Visuals
+        spawnParticle(this.x + Math.cos(this.angle)*15, this.y + Math.sin(this.angle)*15, 'yellow', 5); // Muzzle
+        
+        // Projectile / Instant Hit
+        let dmg = Math.max(1, this.def.damage - (target.def.armor * 5));
+        
+        // Bonus vs Type logic
+        if(this.key === 'rpg' && target.key === 'tank') dmg *= 2;
+        if(this.key === 'tank' && target.key === 'rifle') dmg *= 0.5;
+
+        // Projectile visual
+        gameState.particles.push({
+            x: this.x, y: this.y, 
+            vx: Math.cos(this.angle)*10, vy: Math.sin(this.angle)*10,
+            life: dist(this.x, this.y, target.x, target.y)/10,
+            color: 'orange', size: 2, type: 'bullet'
+        });
+
+        setTimeout(() => {
+            if (target && !target.dead) { // Check existence
+                target.hp -= dmg;
+                spawnParticle(target.x, target.y, 'orange', 10); // Hit
+                if (target.hp <= 0) killEntity(target);
+            }
+        }, 200);
+    }
+}
+
+class Building extends Entity {
+    constructor(type, x, y, team) {
+        super(type, x, y, team);
+        this.radius = 25;
+        this.timer = 0;
+    }
+
+    update() {
+        if (this.dead) return;
+        
+        // Resource Gen
+        if (gameState.tick % 60 === 0) { // Every second roughly
+            if (this.def.income) {
+                // Player Income
+                if (this.team === TEAMS.PLAYER) {
+                    gameState.resources.cmd += this.def.income.cmd || 0;
+                    gameState.resources.fuel += this.def.income.fuel || 0;
+                    gameState.resources.ammo += this.def.income.ammo || 0;
+                    createFloatText(this.x, this.y - 30, `+${this.def.income.cmd}`, '#00bcd4');
+                }
+                // AI Income - Halved for balance
+                if (this.team === TEAMS.ENEMY) {
+                    gameState.aiResources.cmd += (this.def.income.cmd || 0) * 0.5;
+                    gameState.aiResources.fuel += (this.def.income.fuel || 0) * 0.5;
+                }
+            }
+        }
+
+        // Turret Logic
+        if (this.def.range && this.team !== TEAMS.NEUTRAL) {
+             let bestTarget = null;
+            let bestDist = this.def.range;
+            for (let e of gameState.entities) {
+                if (e.team !== this.team && !e.dead) {
+                    let d = dist(this.x, this.y, e.x, e.y);
+                    if (d < bestDist) {
+                        bestDist = d;
+                        bestTarget = e;
+                    }
+                }
+            }
+            if (bestTarget && this.timer <= 0) {
+                this.timer = this.def.reload;
+                // Attack
+                spawnParticle(this.x, this.y, 'yellow', 8);
+                // Projectile visual
+                let ang = Math.atan2(bestTarget.y - this.y, bestTarget.x - this.x);
+                gameState.particles.push({
+                    x: this.x, y: this.y, 
+                    vx: Math.cos(ang)*15, vy: Math.sin(ang)*15,
+                    life: dist(this.x, this.y, bestTarget.x, bestTarget.y)/15,
+                    color: 'red', size: 3, type: 'bullet'
+                });
+                setTimeout(() => {
+                    bestTarget.hp -= this.def.damage;
+                    if (bestTarget.hp <= 0) killEntity(bestTarget);
+                }, 100);
+            }
+            if (this.timer > 0) this.timer--;
+        }
+    }
+}
+
+// --- ENGINE SYSTEMS ---
+
+function initGame() {
+    // Generate Terrain
+    const cols = WORLD_WIDTH / TILE_SIZE;
+    const rows = WORLD_HEIGHT / TILE_SIZE;
+    for (let y = 0; y < rows; y++) {
+        let row = [];
+        for (let x = 0; x < cols; x++) {
+            // Perlin-ish noise (fake)
+            let noise = Math.sin(x * 0.1) + Math.cos(y * 0.1) + Math.random() * 0.5;
+            let type = TERRAIN.PLAINS;
+            if (noise > 1.8) type = TERRAIN.FOREST;
+            if (noise < -1.5) type = TERRAIN.WATER; // Lakes
+            if (Math.abs(x - cols/2) < 2 && y % 5 !== 0) type = TERRAIN.ROAD; // Highway
+            row.push(type);
+        }
+        gameState.terrain.push(row);
+    }
+
+    // Spawn Player HQ
+    gameState.entities.push(new Building('hq', 400, 1000, TEAMS.PLAYER));
+    gameState.entities.push(new Building('depot', 550, 1000, TEAMS.PLAYER));
+    gameState.entities.push(new Unit('logi', 480, 1050, TEAMS.PLAYER));
+    gameState.entities.push(new Unit('rifle', 350, 950, TEAMS.PLAYER));
+    
+    // Spawn Enemy HQ (Far right)
+    gameState.entities.push(new Building('hq', 2600, 1000, TEAMS.ENEMY));
+    gameState.entities.push(new Building('depot', 2750, 1000, TEAMS.ENEMY)); // AI Needs money too
+    gameState.entities.push(new Building('turret', 2400, 900, TEAMS.ENEMY));
+    gameState.entities.push(new Building('turret', 2400, 1100, TEAMS.ENEMY));
+    gameState.entities.push(new Unit('tank', 2500, 1000, TEAMS.ENEMY));
+
+    // Neutral Objectives
+    gameState.entities.push(new Building('depot', 1500, 1000, TEAMS.NEUTRAL));
+    gameState.entities.push(new Building('depot', 1500, 400, TEAMS.NEUTRAL));
+    gameState.entities.push(new Building('depot', 1500, 1600, TEAMS.NEUTRAL));
+
+    gameState.camera.x = 200;
+    gameState.camera.y = 800;
+
+    // Start Loops
+    requestAnimationFrame(loop);
+    setInterval(aiLoop, 3000); // Slow thinking AI
+    
+    updateBuildMenu();
+}
+
+function loop() {
+    gameState.tick++;
+    updateInput();
+    updateEntities();
+    render();
+    updateUI();
+    if (!gameState.gameOver) requestAnimationFrame(loop);
+}
+
+function updateInput() {
+    const camSpeed = 15 / gameState.camera.zoom;
+    if (input.keys['w'] || input.keys['arrowup']) gameState.camera.y -= camSpeed;
+    if (input.keys['s'] || input.keys['arrowdown']) gameState.camera.y += camSpeed;
+    if (input.keys['a'] || input.keys['arrowleft']) gameState.camera.x -= camSpeed;
+    if (input.keys['d'] || input.keys['arrowright']) gameState.camera.x += camSpeed;
+    if (input.keys[' ']) {
+        let hq = gameState.entities.find(e => e.team === TEAMS.PLAYER && e.key === 'hq');
+        if (hq) {
+             gameState.camera.x = hq.x - canvas.width/2;
+             gameState.camera.y = hq.y - canvas.height/2;
+        }
+    }
+
+    // Clamp Camera
+    gameState.camera.x = clamp(gameState.camera.x, 0, WORLD_WIDTH - canvas.width);
+    gameState.camera.y = clamp(gameState.camera.y, 0, WORLD_HEIGHT - canvas.height);
+}
+
+function updateEntities() {
+    gameState.entities.forEach(e => {
+        if (e instanceof Unit) e.update();
+        if (e instanceof Building) e.update();
+    });
+
+    // Particles
+    for (let i = gameState.particles.length - 1; i >= 0; i--) {
+        let p = gameState.particles[i];
+        if (p.type === 'bullet') {
+             p.x += p.vx;
+             p.y += p.vy;
+        }
+        p.life--;
+        if (p.life <= 0) gameState.particles.splice(i, 1);
+    }
+}
+
+function killEntity(e) {
+    e.dead = true;
+    gameState.selection = gameState.selection.filter(s => s !== e);
+    
+    // Explosion
+    for(let i=0; i<8; i++) {
+        spawnParticle(e.x + Math.random()*20-10, e.y + Math.random()*20-10, 'orange', 10 + Math.random()*10);
+    }
+    
+    // Remove from array eventually (lazy delete)
+    let idx = gameState.entities.indexOf(e);
+    if (idx > -1) gameState.entities.splice(idx, 1);
+
+    if (e.key === 'hq') {
+        notify(e.team === TEAMS.PLAYER ? "CRITICAL FAILURE: HQ LOST" : "TARGET DESTROYED: ENEMY DEFEATED");
+        gameState.gameOver = true; // Stop AI loops
+        if (e.team === TEAMS.PLAYER) setTimeout(() => alert("DEFEAT"), 100);
+        else setTimeout(() => alert("VICTORY"), 100);
+    }
+}
+
+function spawnParticle(x, y, color, size) {
+    gameState.particles.push({x, y, color, size, life: 20, vx:0, vy:0});
+}
+
+function createFloatText(x, y, text, color) {
+    // Placeholder
+}
+
+// --- AI LOGIC ---
+function aiLoop() {
+    if (gameState.gameOver) return;
+
+    // 0. Grace Period (30 Seconds)
+    if (Date.now() - gameState.startTime < 30000) return;
+    
+    let aiEntities = gameState.entities.filter(e => e.team === TEAMS.ENEMY);
+    let hq = aiEntities.find(e => e.key === 'hq');
+    let factory = aiEntities.find(e => e.key === 'factory');
+    
+    if (!hq) return; // AI Dead
+
+    let combatUnits = aiEntities.filter(e => e instanceof Unit);
+    let economy = gameState.aiResources;
+
+    // 1. Build Logic
+    // Priority: Factory -> Tank -> Rifle
+    
+    // Try build Factory if missing
+    if (!factory && economy.cmd >= 200 && economy.fuel >= 50) {
+        // Build factory near HQ
+        economy.cmd -= 200;
+        economy.fuel -= 50;
+        gameState.entities.push(new Building('factory', hq.x - 150, hq.y + 50, TEAMS.ENEMY));
+    }
+
+    // Try build Units
+    if (Math.random() < 0.5) { // Don't build every tick, simulate thinking
+        let unitToBuild = null;
+        let spawnPoint = hq;
+
+        // NEW LOGIC: Prioritize Infantry Swarm
+        if (economy.cmd >= 50 && Math.random() < 0.7) {
+            unitToBuild = 'rifle';
+            spawnPoint = hq;
+        } else if (factory) {
+             // If not swarming, maybe build tech
+             if (economy.cmd >= 300 && economy.fuel >= 100) unitToBuild = 'tank';
+             else if (economy.cmd >= 120 && economy.fuel >= 40) unitToBuild = 'humvee';
+             spawnPoint = factory;
+        } 
+        
+        // Fallback
+        if (!unitToBuild && economy.cmd >= 50) {
+            unitToBuild = 'rifle';
+            spawnPoint = hq;
+        }
+
+        if (unitToBuild) {
+            let cost = DB[unitToBuild].cost;
+            if (economy.cmd >= cost.cmd && economy.fuel >= cost.fuel) {
+                economy.cmd -= cost.cmd;
+                economy.fuel -= cost.fuel;
+                // Spawn
+                let u = new Unit(unitToBuild, spawnPoint.x - 50 - Math.random()*50, spawnPoint.y + Math.random()*50, TEAMS.ENEMY);
+                gameState.entities.push(u);
+            }
+        }
+    }
+
+    // 2. Command Logic (Group Up)
+    let target = gameState.entities.find(e => e.team === TEAMS.PLAYER && e.key === 'hq');
+    
+    if (target && combatUnits.length > 4) { // Only attack if we have a squad
+        combatUnits.forEach(u => {
+            if (!u.moveTarget && Math.random() < 0.2) {
+                // Flanking logic: add random offset
+                u.moveTarget = { 
+                    x: target.x + (Math.random()*400 - 200), 
+                    y: target.y + (Math.random()*400 - 200) 
+                };
+            }
+        });
+    } else {
+        // Guard HQ area
+        combatUnits.forEach(u => {
+            if (dist(u.x, u.y, hq.x, hq.y) > 400 && !u.moveTarget) {
+                 u.moveTarget = { x: hq.x - 200, y: hq.y }; // Rally front of HQ
+            }
+        });
+    }
+}
+
+
+// --- RENDERING ---
+
+function render() {
+    // Clear
+    ctx.fillStyle = '#0f1115';
+    ctx.fillRect(0, 0, canvas.width, canvas.height);
+
+    ctx.save();
+    // Camera Transform
+    ctx.translate(-gameState.camera.x, -gameState.camera.y);
+    // Draw Terrain
+    let startCol = Math.floor(gameState.camera.x / TILE_SIZE);
+    let endCol = startCol + (canvas.width / TILE_SIZE) + 1;
+    let startRow = Math.floor(gameState.camera.y / TILE_SIZE);
+    let endRow = startRow + (canvas.height / TILE_SIZE) + 1;
+
+    for (let y = startRow; y < endRow; y++) {
+        for (let x = startCol; x < endCol; x++) {
+            if (y >= 0 && y < gameState.terrain.length && x >= 0 && x < gameState.terrain[0].length) {
+                let t = gameState.terrain[y][x];
+                let color = '#1a1c21';
+                if (t === TERRAIN.FOREST) color = '#1b261b';
+                if (t === TERRAIN.ROAD) color = '#252525';
+                if (t === TERRAIN.WATER) color = '#101820';
+                if (t === TERRAIN.URBAN) color = '#202025';
+
+                ctx.fillStyle = color;
+                ctx.fillRect(x * TILE_SIZE, y * TILE_SIZE, TILE_SIZE, TILE_SIZE);
+                
+                // Grid lines (faint)
+                ctx.strokeStyle = '#222';
+                ctx.lineWidth = 1;
+                ctx.strokeRect(x * TILE_SIZE, y * TILE_SIZE, TILE_SIZE, TILE_SIZE);
+            }
+        }
+    }
+
+    // Draw Entities
+    // Sort by Z (Ground then Air)
+    gameState.entities.sort((a,b) => a.z - b.z);
+
+    gameState.entities.forEach(e => {
+        if (e.dead) return;
+        
+        // Culling
+        if (e.x < gameState.camera.x - 100 || e.x > gameState.camera.x + canvas.width + 100 ||
+            e.y < gameState.camera.y - 100 || e.y > gameState.camera.y + canvas.height + 100) return;
+
+        ctx.save();
+        ctx.translate(e.x, e.y);
+        ctx.rotate(e.angle);
+
+        // Selection Ring
+        if (gameState.selection.includes(e)) {
+            ctx.beginPath();
+            ctx.arc(0, 0, e.radius + 5, 0, Math.PI*2);
+            ctx.strokeStyle = '#00bcd4';
+            ctx.lineWidth = 1;
+            ctx.stroke();
+            
+            // Draw Range
+            /*
+            if (e.def.range) {
+                ctx.beginPath();
+                ctx.arc(0, 0, e.def.range, 0, Math.PI*2);
+                ctx.strokeStyle = 'rgba(0, 188, 212, 0.1)';
+                ctx.stroke();
+            }
+            */
+        }
+
+        // Draw Unit Shape
+        let c = e.team === TEAMS.PLAYER ? '#4caf50' : (e.team === TEAMS.ENEMY ? '#ff4444' : '#fff');
+        if (e instanceof Building) c = e.def.color;
+        
+        ctx.fillStyle = c;
+        
+        // Shadow for Air
+        if (e.z === 1) {
+            ctx.fillStyle = 'rgba(0,0,0,0.5)';
+            ctx.beginPath();
+            ctx.arc(-10, 10, 10, 0, Math.PI*2);
+            ctx.fill();
+            ctx.fillStyle = c;
+        }
+
+        if (e.key === 'tank') {
+            ctx.fillRect(-10, -8, 20, 16); // Body
+            ctx.fillStyle = '#222'; // Turret
+            ctx.fillRect(-5, -5, 15, 10);
+            ctx.fillRect(0, -2, 20, 4); // Barrel
+        } else if (e.key === 'heli') {
+            ctx.beginPath();
+            ctx.moveTo(10, 0); ctx.lineTo(-10, 5); ctx.lineTo(-10, -5);
+            ctx.fill();
+            // Rotor
+            ctx.strokeStyle = '#333';
+            ctx.beginPath(); ctx.moveTo(-15, 0); ctx.lineTo(15, 0); ctx.stroke();
+            ctx.beginPath(); ctx.moveTo(0, -15); ctx.lineTo(0, 15); ctx.stroke();
+        } else if (e.key === 'rifle' || e.key === 'rpg') {
+            ctx.beginPath(); ctx.arc(0, 0, 5, 0, Math.PI*2); ctx.fill();
+        } else if (e.type === 'building') {
+            ctx.fillRect(-15, -15, 30, 30);
+            ctx.fillStyle = '#000';
+            ctx.font = '10px Arial';
+            ctx.textAlign = 'center';
+            ctx.fillText(e.def.symbol, 0, 4);
+        } else {
+            ctx.fillRect(-8, -8, 16, 16);
+        }
+
+        // Health Bar
+        ctx.rotate(-e.angle); // Unrotate for UI
+        if (e.hp < e.maxHp || gameState.selection.includes(e)) {
+            ctx.fillStyle = 'red';
+            ctx.fillRect(-10, -20, 20, 3);
+            ctx.fillStyle = '#0f0';
+            ctx.fillRect(-10, -20, 20 * (e.hp/e.maxHp), 3);
+        }
+
+        // Logistics Icons (Fuel/Ammo Warning)
+        if (e.type === 'unit') {
+            if (e.fuel <= 0 || e.ammo <= 0) {
+                ctx.fillStyle = 'yellow';
+                ctx.font = '10px monospace';
+                ctx.fillText("!", 0, -25);
+            }
+        }
+
+        ctx.restore();
+    });
+
+    // Particles
+    gameState.particles.forEach(p => {
+        ctx.globalAlpha = p.life / 20;
+        ctx.fillStyle = p.color;
+        ctx.beginPath();
+        ctx.arc(p.x, p.y, p.size, 0, Math.PI*2);
+        ctx.fill();
+        ctx.globalAlpha = 1;
+    });
+
+    // Selection Box
+    if (input.mouse.dragStart) {
+        let x = input.mouse.dragStart.x + gameState.camera.x;
+        let y = input.mouse.dragStart.y + gameState.camera.y;
+        let w = input.mouse.worldX - x;
+        let h = input.mouse.worldY - y;
+        
+        ctx.strokeStyle = '#00bcd4';
+        ctx.lineWidth = 1;
+        ctx.strokeRect(x, y, w, h);
+        ctx.fillStyle = 'rgba(0, 188, 212, 0.1)';
+        ctx.fillRect(x, y, w, h);
+    }
+
+    ctx.restore();
+
+    // Minimap Render
+    renderMinimap();
+}
+
+function renderMinimap() {
+    minimapCtx.fillStyle = '#000';
+    minimapCtx.fillRect(0, 0, minimapCanvas.width, minimapCanvas.height);
+    
+    let sx = minimapCanvas.width / WORLD_WIDTH;
+    let sy = minimapCanvas.height / WORLD_HEIGHT;
+
+    gameState.entities.forEach(e => {
+        minimapCtx.fillStyle = e.team === TEAMS.PLAYER ? '#4caf50' : (e.team === TEAMS.ENEMY ? '#ff4444' : '#888');
+        minimapCtx.fillRect(e.x * sx, e.y * sy, 2, 2);
+    });
+
+    // Camera Rect
+    minimapCtx.strokeStyle = '#fff';
+    minimapCtx.strokeRect(gameState.camera.x * sx, gameState.camera.y * sy, canvas.width * sx, canvas.height * sy);
+}
+
+// --- INTERACTION ---
+
+function updateUI() {
+    document.getElementById('res-cmd').innerText = Math.floor(gameState.resources.cmd);
+    document.getElementById('res-fuel').innerText = Math.floor(gameState.resources.fuel);
+    document.getElementById('res-ammo').innerText = Math.floor(gameState.resources.ammo);
+    
+    // Pop Calc
+    let pop = gameState.entities.filter(e => e.team === TEAMS.PLAYER && e.type === 'unit')
+                .reduce((acc, e) => acc + e.def.pop, 0);
+    gameState.resources.pop = pop;
+    document.getElementById('res-pop').innerText = `${pop}/${gameState.resources.maxPop}`;
+
+    let time = Math.floor((Date.now() - gameState.startTime)/1000);
+    let m = Math.floor(time/60).toString().padStart(2,'0');
+    let s = (time%60).toString().padStart(2,'0');
+    document.getElementById('timer').innerText = `OP_TIME: ${m}:${s}`;
+}
+
+function updateBuildMenu() {
+    let panel = document.getElementById('build-panel');
+    panel.innerHTML = '';
+    
+    let selection = gameState.selection[0];
+    let items = [];
+
+    // Header for context
+    let header = document.createElement('div');
+    header.style.gridColumn = "span 3";
+    header.style.fontSize = "12px";
+    header.style.color = "#888";
+    header.style.marginBottom = "5px";
+    header.innerText = "CONSTRUCTION PROTOCOLS:";
+    panel.appendChild(header);
+    
+    // Logic: If Building selected -> Show its production capabilities.
+    if (selection && selection.type === 'building' && selection.team === TEAMS.PLAYER) {
+        
+        header.innerText = `PRODUCING FROM: ${selection.def.name.toUpperCase()}`;
+
+        // Get produceable units from DB definition
+        let produceList = selection.def.produces || [];
+        
+        produceList.forEach(k => {
+            items.push({key: k, def: DB[k]});
+        });
+
+        if (items.length === 0) {
+            header.innerText = "SYSTEM: NO FABRICATION FACILITIES";
+        }
+
+    } else {
+        // Global Build (Command Points) - Structures
+        header.innerText = "FIELD ENGINEERING (BUILDINGS):";
+        Object.keys(DB).forEach(k => {
+            let def = DB[k];
+            if (def.type === 'building') {
+                items.push({key: k, def: def});
+            }
+        });
+    }
+
+    items.forEach(item => {
+        let btn = document.createElement('div');
+        btn.className = 'btn';
+        
+        // Check affordability
+        let canAfford = gameState.resources.cmd >= item.def.cost.cmd && gameState.resources.fuel >= item.def.cost.fuel;
+        if (!canAfford) btn.classList.add('disabled');
+
+        btn.innerHTML = `<span class="btn-icon">${item.def.icon || item.def.symbol}</span> ${item.def.name} <span class="btn-cost">C:${item.def.cost.cmd} F:${item.def.cost.fuel}</span>`;
+        
+        btn.onclick = () => tryBuild(item.key);
+        panel.appendChild(btn);
+    });
+}
+
+function tryBuild(key) {
+    let def = DB[key];
+    let res = gameState.resources;
+
+    // Re-check cost
+    if (res.cmd < def.cost.cmd || res.fuel < def.cost.fuel) {
+        notify("INSUFFICIENT RESOURCES");
+        return;
+    }
+
+    if (def.type === 'unit') {
+        let productionBldg = gameState.selection[0];
+        // Double check building is valid and owned by player
+        if (!productionBldg || productionBldg.team !== TEAMS.PLAYER) { 
+            notify("SELECT PRODUCTION BUILDING"); 
+            return; 
+        }
+        
+        // Deduct
+        res.cmd -= def.cost.cmd;
+        res.fuel -= def.cost.fuel;
+        
+        notify(`CONSTRUCTING ${def.name.toUpperCase()}`);
+        // Visual Timer (instant for now but with delay logic)
+        setTimeout(() => {
+            let u = new Unit(key, productionBldg.x, productionBldg.y + 50, TEAMS.PLAYER);
+            // Rally point
+            u.moveTarget = {x: productionBldg.x, y: productionBldg.y + 120};
+            gameState.entities.push(u);
+        }, def.buildTime * 100); // 100ms per build tick
+    
+    } else {
+        // Building placement mode
+        notify("DEPLOYMENT: SELECT COORDINATES");
+        document.body.style.cursor = 'copy';
+        
+        // One-time click handler for placement
+        let handler = (e) => {
+            if (e.button !== 0) return; // Only left click
+
+            let rect = canvas.getBoundingClientRect();
+            let x = (e.clientX - rect.left) + gameState.camera.x;
+            let y = (e.clientY - rect.top) + gameState.camera.y;
+            
+            // Deduct now
+            if (res.cmd >= def.cost.cmd && res.fuel >= def.cost.fuel) {
+                res.cmd -= def.cost.cmd;
+                res.fuel -= def.cost.fuel;
+                
+                gameState.entities.push(new Building(key, x, y, TEAMS.PLAYER));
+                notify(`${def.name} ESTABLISHED`);
+            } else {
+                notify("RESOURCES DEPLETED DURING TRANSIT");
+            }
+            
+            document.body.style.cursor = 'crosshair';
+            // Update menu to reflect spent resources
+            updateBuildMenu();
+        };
+        canvas.addEventListener('mouseup', handler, {once:true});
+    }
+    updateBuildMenu(); // Refresh buttons state
+}
+
+function notify(msg) {
+    let div = document.createElement('div');
+    div.className = 'note';
+    div.innerText = msg;
+    document.getElementById('notifications').appendChild(div);
+    setTimeout(() => div.remove(), 4000);
+}
+
+// --- INPUT LISTENERS ---
+
+window.addEventListener('keydown', e => input.keys[e.key.toLowerCase()] = true);
+window.addEventListener('keyup', e => input.keys[e.key.toLowerCase()] = false);
+
+canvas.addEventListener('mousedown', e => {
+    let rect = canvas.getBoundingClientRect();
+    let x = e.clientX - rect.left;
+    let y = e.clientY - rect.top;
+    let wx = x + gameState.camera.x;
+    let wy = y + gameState.camera.y;
+
+    if (e.button === 0) { // Left Click
+        input.mouse.leftDown = true;
+        input.mouse.dragStart = { x: x, y: y };
+        // If simply clicking, clear selection
+        // gameState.selection = [];
+    } else if (e.button === 2) { // Right Click
+        // Issue Order
+        let target = null;
+        // Check if clicked entity
+        for(let ent of gameState.entities) {
+            if (dist(ent.x, ent.y, wx, wy) < ent.radius + 5 && !ent.dead && ent.team === TEAMS.ENEMY) {
+                target = ent;
+                break;
+            }
+        }
+        
+        gameState.selection.forEach(u => {
+            if (u instanceof Unit) {
+                if (target) {
+                    u.target = target;
+                    // Move into range if needed handled in Update
+                    // For now, attack order usually implies move to range
+                    notify(`ENGAGING TARGET`);
+                } else {
+                    u.moveTarget = {x: wx, y: wy};
+                    u.target = null;
+                    spawnParticle(wx, wy, '#00bcd4', 3); // Waypoint marker
+                }
+            }
+        });
+    }
+});
+
+canvas.addEventListener('mousemove', e => {
+    let rect = canvas.getBoundingClientRect();
+    input.mouse.x = e.clientX - rect.left;
+    input.mouse.y = e.clientY - rect.top;
+    input.mouse.worldX = input.mouse.x + gameState.camera.x;
+    input.mouse.worldY = input.mouse.y + gameState.camera.y;
+});
+
+canvas.addEventListener('mouseup', e => {
+    if (e.button === 0 && input.mouse.dragStart) {
+        let x = input.mouse.dragStart.x + gameState.camera.x;
+        let y = input.mouse.dragStart.y + gameState.camera.y;
+        let w = input.mouse.worldX - x;
+        let h = input.mouse.worldY - y;
+
+        // Normalize rect
+        let rx = w < 0 ? x + w : x;
+        let ry = h < 0 ? y + h : y;
+        let rw = Math.abs(w);
+        let rh = Math.abs(h);
+
+        let newSel = [];
+        
+        // Point click
+        if (rw < 5 && rh < 5) {
+            for(let ent of gameState.entities) {
+                if (ent.team === TEAMS.PLAYER && dist(ent.x, ent.y, rx, ry) < ent.radius + 10) {
+                    newSel.push(ent);
+                    break; // Single select priority
+                }
+            }
+        } else {
+            // Box select
+            gameState.entities.forEach(ent => {
+                if (ent.team === TEAMS.PLAYER && ent.x > rx && ent.x < rx+rw && ent.y > ry && ent.y < ry+rh) {
+                    newSel.push(ent);
+                }
+            });
+        }
+
+        if (!input.keys['shift']) gameState.selection = newSel;
+        else gameState.selection = gameState.selection.concat(newSel);
+
+        // Update UI
+        let info = document.getElementById('unit-info');
+        if (gameState.selection.length > 0) {
+            let first = gameState.selection[0];
+            info.innerHTML = `<strong>${first.def.name.toUpperCase()}</strong> ${gameState.selection.length > 1 ? '(+' + (gameState.selection.length-1) + ')' : ''}`;
+            document.getElementById('unit-details').innerHTML = `HP: ${first.hp}/${first.maxHp}<br>FUEL: ${Math.floor(first.fuel)}<br>AMMO: ${Math.floor(first.ammo)}<br>${first.def.desc}`;
+        } else {
+            info.innerHTML = "SYSTEM READY... AWAITING SELECTION";
+            document.getElementById('unit-details').innerHTML = "";
+        }
+        updateBuildMenu();
+
+        input.mouse.dragStart = null;
+        input.mouse.leftDown = false;
+    }
+});
+
+canvas.addEventListener('contextmenu', e => e.preventDefault());
+
+// Resize
+window.addEventListener('resize', () => {
+    canvas.width = window.innerWidth;
+    canvas.height = window.innerHeight;
+});
+canvas.width = window.innerWidth;
+canvas.height = window.innerHeight;
+
+// Start Button
+document.getElementById('start-btn').addEventListener('click', () => {
+    document.getElementById('start-screen').style.display = 'none';
+    initGame();
+});
+
+</script>
+</body>
+</html>

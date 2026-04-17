@@ -1,0 +1,481 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>Tactical Command: Maritime Strike</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <style>
+        body {
+            background-color: #050a0f;
+            color: #00ff41;
+            font-family: 'Courier New', Courier, monospace;
+            overflow: hidden;
+            touch-action: none;
+        }
+        #game-canvas {
+            image-rendering: pixelated;
+            cursor: crosshair;
+        }
+        .ui-panel {
+            background: rgba(10, 20, 30, 0.85);
+            border: 1px solid #00ff41;
+            box-shadow: 0 0 10px rgba(0, 255, 65, 0.2);
+            backdrop-filter: blur(4px);
+        }
+        .scanline {
+            width: 100%;
+            height: 100px;
+            z-index: 10;
+            background: linear-gradient(0deg, rgba(0, 255, 65, 0) 0%, rgba(0, 255, 65, 0.05) 50%, rgba(0, 255, 65, 0) 100%);
+            opacity: 0.1;
+            position: absolute;
+            pointer-events: none;
+            animation: scan 6s linear infinite;
+        }
+        @keyframes scan {
+            from { top: -100px; }
+            to { top: 100%; }
+        }
+        .command-ring {
+            position: absolute;
+            border-radius: 50%;
+            border: 2px dashed #00ff41;
+            pointer-events: none;
+            display: none;
+        }
+        .mobile-btn {
+            user-select: none;
+            -webkit-tap-highlight-color: transparent;
+        }
+    </style>
+</head>
+<body class="flex flex-col h-screen overflow-hidden">
+
+    <div class="scanline"></div>
+
+    <!-- Header Stats -->
+    <div class="flex justify-between items-center px-4 py-2 bg-slate-900 border-b border-green-900 z-20">
+        <div class="flex items-center gap-4">
+            <span class="text-xs font-bold tracking-widest text-green-500">TACTICAL COMMAND v1.0</span>
+            <span id="game-time" class="text-sm font-mono">TIME: 12:00:00 Z</span>
+        </div>
+        <div class="flex gap-4 text-xs">
+            <span id="contact-count">CONTACTS: 0</span>
+            <span id="threat-level" class="text-yellow-500">THREAT: LOW</span>
+        </div>
+    </div>
+
+    <!-- Main Game Area -->
+    <div class="relative flex-grow overflow-hidden bg-black">
+        <canvas id="game-canvas" class="w-full h-full"></canvas>
+        
+        <!-- Selection Ring (Visual Helper) -->
+        <div id="command-ring" class="command-ring w-24 h-24"></div>
+
+        <!-- Right Detail Panel -->
+        <div id="detail-panel" class="ui-panel absolute right-4 top-4 w-64 p-3 rounded-md hidden md:block text-[10px] space-y-2">
+            <h2 class="text-sm border-b border-green-900 mb-2">UNIT INFO</h2>
+            <div id="unit-data">
+                Select a unit to view telemetry.
+            </div>
+            <div class="mt-4 pt-2 border-t border-green-900">
+                <p>STATUS: <span id="unit-status">IDLE</span></p>
+                <p>FUEL: <span id="unit-fuel">---</span></p>
+            </div>
+        </div>
+
+        <!-- Bottom Log / Console -->
+        <div class="absolute bottom-4 left-4 right-4 md:right-72 ui-panel h-24 p-2 overflow-y-auto text-[10px] leading-tight font-mono">
+            <div id="event-log" class="flex flex-col-reverse">
+                <div class="text-green-700">> SYSTEM BOOT COMPLETE</div>
+                <div class="text-green-700">> AWAITING OPERATIONAL ORDERS</div>
+            </div>
+        </div>
+
+        <!-- Mobile Quick Controls -->
+        <div class="absolute bottom-32 right-4 flex flex-col gap-2 md:hidden">
+            <button onclick="orderAttack()" class="mobile-btn w-12 h-12 bg-red-900/50 border border-red-500 rounded-full flex items-center justify-center text-white font-bold">ATK</button>
+            <button onclick="orderMove()" class="mobile-btn w-12 h-12 bg-blue-900/50 border border-blue-500 rounded-full flex items-center justify-center text-white font-bold">MOV</button>
+            <button onclick="orderRTB()" class="mobile-btn w-12 h-12 bg-green-900/50 border border-green-500 rounded-full flex items-center justify-center text-white font-bold">RTB</button>
+        </div>
+    </div>
+
+    <script>
+        const canvas = document.getElementById('game-canvas');
+        const ctx = canvas.getContext('2d');
+        const log = document.getElementById('event-log');
+        const unitData = document.getElementById('unit-data');
+        const commandRing = document.getElementById('command-ring');
+
+        // Game Configuration
+        const CONFIG = {
+            TICKS_PER_SEC: 60,
+            UNIT_SIZE: 12,
+            DETECTION_RANGE: 250,
+            MISSILE_RANGE: 150,
+            GRID_SIZE: 100,
+            ZOOM_MIN: 0.5,
+            ZOOM_MAX: 4.0
+        };
+
+        // State Management
+        let state = {
+            camera: { x: 0, y: 0, zoom: 1.0 },
+            mouse: { x: 0, y: 0, worldX: 0, worldY: 0, isDown: false },
+            units: [],
+            projectiles: [],
+            selectedId: null,
+            lastTime: 0,
+            currentTime: new Date().getTime(),
+            inputMode: 'SELECT' // SELECT, MOVE, ATTACK
+        };
+
+        // Unit Constructor
+        class Unit {
+            constructor(id, x, y, faction, type) {
+                this.id = id;
+                this.x = x;
+                this.y = y;
+                this.targetX = x;
+                this.targetY = y;
+                this.faction = faction;
+                this.type = type; // 'FIGHTER', 'SAM', 'SHIP', 'AWACS'
+                this.speed = (type === 'FIGHTER') ? 2.5 : 0.5;
+                this.heading = 0;
+                this.health = 100;
+                this.fuel = 1000;
+                this.sensorRange = (type === 'AWACS') ? 500 : 250;
+                this.detected = (faction === 'PLAYER');
+                this.ammo = 4;
+            }
+
+            update() {
+                // Movement Logic
+                const dx = this.targetX - this.x;
+                const dy = this.targetY - this.y;
+                const dist = Math.sqrt(dx * dx + dy * dy);
+
+                if (dist > 5) {
+                    this.heading = Math.atan2(dy, dx);
+                    this.x += Math.cos(this.heading) * this.speed;
+                    this.y += Math.sin(this.heading) * this.speed;
+                    this.fuel -= 0.05;
+                }
+
+                // AI basic engagement (for enemy)
+                if (this.faction === 'ENEMY' && Math.random() < 0.005) {
+                    const players = state.units.filter(u => u.faction === 'PLAYER');
+                    if (players.length > 0) {
+                        const target = players[Math.floor(Math.random() * players.length)];
+                        if (getDistance(this, target) < CONFIG.MISSILE_RANGE) {
+                            fireMissile(this, target);
+                        }
+                    }
+                }
+            }
+
+            draw() {
+                if (!this.detected && this.faction === 'ENEMY') return;
+
+                const screen = worldToScreen(this.x, this.y);
+                const color = this.faction === 'PLAYER' ? '#00ff41' : '#ff3131';
+                
+                ctx.save();
+                ctx.translate(screen.x, screen.y);
+                ctx.rotate(this.heading);
+
+                // Draw Unit Icon
+                ctx.strokeStyle = color;
+                ctx.lineWidth = 2;
+                if (this.type === 'FIGHTER') {
+                    ctx.beginPath();
+                    ctx.moveTo(8, 0); ctx.lineTo(-8, 6); ctx.lineTo(-4, 0); ctx.lineTo(-8, -6); ctx.closePath();
+                    ctx.stroke();
+                } else if (this.type === 'SHIP') {
+                    ctx.strokeRect(-8, -4, 16, 8);
+                } else {
+                    ctx.beginPath();
+                    ctx.arc(0, 0, 6, 0, Math.PI * 2);
+                    ctx.stroke();
+                }
+
+                // Selection Box
+                if (state.selectedId === this.id) {
+                    ctx.setLineDash([2, 2]);
+                    ctx.strokeRect(-12, -12, 24, 24);
+                }
+
+                ctx.restore();
+
+                // Unit Text Labels
+                ctx.fillStyle = color;
+                ctx.font = '9px monospace';
+                ctx.fillText(`${this.type} [${Math.floor(this.health)}%]`, screen.x + 15, screen.y - 5);
+            }
+        }
+
+        class Projectile {
+            constructor(x, y, target, sourceId) {
+                this.x = x;
+                this.y = y;
+                this.target = target;
+                this.sourceId = sourceId;
+                this.speed = 5;
+                this.life = 200;
+            }
+
+            update() {
+                const dx = this.target.x - this.x;
+                const dy = this.target.y - this.y;
+                const dist = Math.sqrt(dx * dx + dy * dy);
+                const angle = Math.atan2(dy, dx);
+
+                this.x += Math.cos(angle) * this.speed;
+                this.y += Math.sin(angle) * this.speed;
+                this.life--;
+
+                if (dist < 10) {
+                    this.target.health -= 25;
+                    addLog(`HIT: ${this.target.type} DAMAGED BY MISSILE`, '#ff3131');
+                    this.life = 0;
+                }
+            }
+
+            draw() {
+                const screen = worldToScreen(this.x, this.y);
+                ctx.fillStyle = '#ffffff';
+                ctx.beginPath();
+                ctx.arc(screen.x, screen.y, 2, 0, Math.PI * 2);
+                ctx.fill();
+            }
+        }
+
+        // Initialize Units
+        function initGame() {
+            state.units.push(new Unit(1, 100, 100, 'PLAYER', 'AWACS'));
+            state.units.push(new Unit(2, 150, 150, 'PLAYER', 'FIGHTER'));
+            state.units.push(new Unit(3, 150, 200, 'PLAYER', 'FIGHTER'));
+
+            // Enemy Units (Hidden initially)
+            for(let i=0; i<3; i++) {
+                const enemy = new Unit(100 + i, 800 + Math.random()*200, 500 + Math.random()*200, 'ENEMY', 'FIGHTER');
+                enemy.targetX = 200;
+                enemy.targetY = 200;
+                state.units.push(enemy);
+            }
+            
+            resize();
+            requestAnimationFrame(gameLoop);
+        }
+
+        function resize() {
+            canvas.width = window.innerWidth;
+            canvas.height = window.innerHeight;
+        }
+
+        function worldToScreen(x, y) {
+            return {
+                x: (x - state.camera.x) * state.camera.zoom + canvas.width / 2,
+                y: (y - state.camera.y) * state.camera.zoom + canvas.height / 2
+            };
+        }
+
+        function screenToWorld(x, y) {
+            return {
+                x: (x - canvas.width / 2) / state.camera.zoom + state.camera.x,
+                y: (y - canvas.height / 2) / state.camera.zoom + state.camera.y
+            };
+        }
+
+        function getDistance(u1, u2) {
+            return Math.sqrt((u1.x - u2.x)**2 + (u1.y - u2.y)**2);
+        }
+
+        function addLog(msg, color = '#00ff41') {
+            const entry = document.createElement('div');
+            entry.style.color = color;
+            entry.textContent = `> ${new Date().toLocaleTimeString()} - ${msg}`;
+            log.prepend(entry);
+            if (log.childNodes.length > 20) log.removeChild(log.lastChild);
+        }
+
+        function fireMissile(source, target) {
+            if (source.ammo <= 0) return;
+            source.ammo--;
+            state.projectiles.push(new Projectile(source.x, source.y, target, source.id));
+            addLog(`VAMPIRE: MISSILE LAUNCH DETECTED`, '#ffa500');
+        }
+
+        // Main Loop
+        function gameLoop(time) {
+            ctx.clearRect(0, 0, canvas.width, canvas.height);
+            
+            // Draw Grid
+            drawGrid();
+
+            // Logic Updates
+            state.units.forEach(u => u.update());
+            state.projectiles = state.projectiles.filter(p => p.life > 0);
+            state.projectiles.forEach(p => p.update());
+
+            // Check Detections
+            state.units.forEach(u => {
+                if (u.faction === 'ENEMY') {
+                    u.detected = false;
+                    state.units.filter(p => p.faction === 'PLAYER').forEach(p => {
+                        if (getDistance(u, p) < p.sensorRange) u.detected = true;
+                    });
+                }
+            });
+
+            // Cleanup dead units
+            state.units = state.units.filter(u => u.health > 0);
+
+            // Draw Everything
+            state.units.forEach(u => u.draw());
+            state.projectiles.forEach(p => p.draw());
+
+            // Update UI
+            updateUI();
+
+            requestAnimationFrame(gameLoop);
+        }
+
+        function drawGrid() {
+            const start = screenToWorld(0, 0);
+            const end = screenToWorld(canvas.width, canvas.height);
+            
+            ctx.strokeStyle = '#0a1a10';
+            ctx.lineWidth = 1;
+
+            const gridSpacing = CONFIG.GRID_SIZE;
+            for (let x = Math.floor(start.x / gridSpacing) * gridSpacing; x <= end.x; x += gridSpacing) {
+                const p1 = worldToScreen(x, start.y);
+                const p2 = worldToScreen(x, end.y);
+                ctx.beginPath(); ctx.moveTo(p1.x, p1.y); ctx.lineTo(p2.x, p2.y); ctx.stroke();
+            }
+            for (let y = Math.floor(start.y / gridSpacing) * gridSpacing; y <= end.y; y += gridSpacing) {
+                const p1 = worldToScreen(start.x, y);
+                const p2 = worldToScreen(end.x, y);
+                ctx.beginPath(); ctx.moveTo(p1.x, p1.y); ctx.lineTo(p2.x, p2.y); ctx.stroke();
+            }
+        }
+
+        function updateUI() {
+            const selected = state.units.find(u => u.id === state.selectedId);
+            if (selected) {
+                document.getElementById('unit-status').textContent = selected.fuel < 200 ? 'LOW FUEL' : 'OPTIMAL';
+                document.getElementById('unit-fuel').textContent = `${Math.floor(selected.fuel)}L`;
+                unitData.innerHTML = `
+                    TYPE: ${selected.type}<br>
+                    POS: ${Math.floor(selected.x)}, ${Math.floor(selected.y)}<br>
+                    HDG: ${Math.floor(selected.heading * 57.2)}°<br>
+                    AMMO: ${selected.ammo}x AAM
+                `;
+                
+                // Update ring position
+                const screen = worldToScreen(selected.x, selected.y);
+                commandRing.style.display = 'block';
+                commandRing.style.left = (screen.x - 48) + 'px';
+                commandRing.style.top = (screen.y - 48) + 'px';
+            } else {
+                commandRing.style.display = 'none';
+            }
+
+            document.getElementById('contact-count').textContent = `CONTACTS: ${state.units.filter(u => u.detected).length}`;
+        }
+
+        // Input Handling
+        window.addEventListener('resize', resize);
+
+        canvas.addEventListener('mousedown', (e) => {
+            const world = screenToWorld(e.clientX, e.clientY);
+            
+            // Selection logic
+            let found = false;
+            state.units.forEach(u => {
+                if (u.detected && getDistance({x: world.x, y: world.y}, u) < 20 / state.camera.zoom) {
+                    state.selectedId = u.id;
+                    found = true;
+                    if (u.faction === 'ENEMY' && state.lastSelectedId) {
+                        // Attack context
+                        const attacker = state.units.find(a => a.id === state.lastSelectedId && a.faction === 'PLAYER');
+                        if (attacker) fireMissile(attacker, u);
+                    }
+                }
+            });
+
+            if (!found && state.selectedId) {
+                const unit = state.units.find(u => u.id === state.selectedId);
+                if (unit && unit.faction === 'PLAYER') {
+                    unit.targetX = world.x;
+                    unit.targetY = world.y;
+                    addLog(`VECTORED UNIT ${unit.id} TO NEW WAYPOINT`);
+                }
+            }
+
+            if (!found) state.lastSelectedId = state.selectedId;
+            state.mouse.isDown = true;
+        });
+
+        // Touch handling (Mobile)
+        canvas.addEventListener('touchstart', (e) => {
+            const touch = e.touches[0];
+            const world = screenToWorld(touch.clientX, touch.clientY);
+            
+            let found = false;
+            state.units.forEach(u => {
+                if (u.detected && getDistance({x: world.x, y: world.y}, u) < 40 / state.camera.zoom) {
+                    state.selectedId = u.id;
+                    found = true;
+                }
+            });
+
+            if (!found && state.selectedId) {
+                const unit = state.units.find(u => u.id === state.selectedId);
+                if (unit && unit.faction === 'PLAYER') {
+                    unit.targetX = world.x;
+                    unit.targetY = world.y;
+                }
+            }
+        }, { passive: false });
+
+        // Pinch to Zoom (Simulated with scroll for simplicity, but can add touch gestures)
+        canvas.addEventListener('wheel', (e) => {
+            e.preventDefault();
+            const zoomSpeed = 0.1;
+            if (e.deltaY < 0) state.camera.zoom = Math.min(CONFIG.ZOOM_MAX, state.camera.zoom + zoomSpeed);
+            else state.camera.zoom = Math.max(CONFIG.ZOOM_MIN, state.camera.zoom - zoomSpeed);
+        }, { passive: false });
+
+        // Mobile Command Helpers
+        function orderAttack() {
+            addLog("SELECT ENEMY TARGET TO ENGAGE", "#ff3131");
+        }
+        function orderMove() {
+            addLog("TAP MAP TO SET WAYPOINT", "#3182ff");
+        }
+        function orderRTB() {
+            const unit = state.units.find(u => u.id === state.selectedId);
+            if (unit) {
+                unit.targetX = 100; unit.targetY = 100;
+                addLog(`UNIT ${unit.id} RETURNING TO BASE`);
+            }
+        }
+
+        // Camera Pan
+        canvas.addEventListener('mousemove', (e) => {
+            if (state.mouse.isDown && !state.selectedId) {
+                state.camera.x -= e.movementX / state.camera.zoom;
+                state.camera.y -= e.movementY / state.camera.zoom;
+            }
+        });
+        window.addEventListener('mouseup', () => state.mouse.isDown = false);
+
+        // Start
+        initGame();
+
+    </script>
+</body>
+</html>

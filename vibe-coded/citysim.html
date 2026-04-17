@@ -1,0 +1,924 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>CitySim - A Tiny City Builder</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+    <style>
+        body {
+            font-family: 'Inter', sans-serif;
+            overflow: hidden;
+        }
+        canvas {
+            background-color: #2d3748; /* gray-800 */
+            cursor: pointer;
+            border: 2px solid #4a5568; /* gray-700 */
+            image-rendering: -moz-crisp-edges;
+            image-rendering: -webkit-crisp-edges;
+            image-rendering: pixelated;
+            image-rendering: crisp-edges;
+        }
+        .ui-panel {
+            background-color: #1a202c; /* gray-900 */
+        }
+        .build-btn.selected {
+            background-color: #4299e1; /* blue-500 */
+            border-color: #63b3ed !important; /* blue-400 */
+        }
+        .build-btn:hover {
+            background-color: #4a5568; /* gray-600 */
+        }
+        .modal-backdrop {
+            background-color: rgba(0, 0, 0, 0.7);
+            backdrop-filter: blur(5px);
+        }
+        .expand-btn {
+            background-color: #2d3748;
+            border: 1px solid #4a5568;
+            padding: 8px 12px;
+            border-radius: 6px;
+            font-weight: 600;
+            transition: background-color 0.2s;
+        }
+        .expand-btn:hover {
+            background-color: #4a5568;
+        }
+    </style>
+</head>
+<body class="text-white select-none bg-gray-900 flex flex-col h-screen">
+
+    <!-- Top UI Panel -->
+    <div class="ui-panel p-3 shadow-lg flex justify-between items-center z-10 border-b border-gray-700">
+        <div class="flex items-center space-x-6">
+            <h1 class="text-xl font-bold text-gray-100">CitySim</h1>
+            <div>
+                <span class="text-sm text-gray-400">Date</span>
+                <p id="date-display" class="font-semibold text-lg">Day 1</p>
+            </div>
+            <div>
+                <span class="text-sm text-gray-400">Money</span>
+                <p id="money-display" class="font-semibold text-lg text-green-400">$5000</p>
+            </div>
+            <div>
+                <span class="text-sm text-gray-400">Population</span>
+                <p id="population-display" class="font-semibold text-lg text-blue-400">0</p>
+            </div>
+        </div>
+        <div class="flex items-center space-x-2">
+             <button id="pause-btn" class="px-4 py-2 bg-yellow-500 hover:bg-yellow-600 rounded-md font-semibold">Pause</button>
+             <button id="help-btn" class="px-4 py-2 bg-blue-500 hover:bg-blue-600 rounded-md font-semibold">Help</button>
+        </div>
+    </div>
+
+    <!-- Main Content Area -->
+    <div id="main-content" class="flex flex-1 overflow-hidden">
+        
+        <!-- Left Panel (Build Menu) -->
+        <div id="left-panel" class="ui-panel w-60 p-4 flex flex-col space-y-2 overflow-y-auto border-r border-gray-700">
+             <h2 class="text-lg font-bold mb-2 text-center">Build Menu</h2>
+             <div id="build-menu" class="flex flex-col space-y-2">
+                 <!-- Build options will be dynamically inserted here -->
+             </div>
+             <div id="rotate-info" class="text-center text-xs text-gray-400 mt-4 p-2 bg-gray-800 rounded">
+                 Press 'R' to rotate buildings
+             </div>
+        </div>
+
+        <!-- Center Panel (Canvas) -->
+        <div id="canvas-container" class="flex-1 flex items-center justify-center overflow-auto bg-gray-800 p-4 relative">
+            <canvas id="gameCanvas"></canvas>
+            <!-- Preview placement overlay -->
+            <div id="placement-preview" class="absolute pointer-events-none" style="display: none; background-color: rgba(255, 255, 255, 0.3); border: 1px dashed white;"></div>
+        </div>
+
+        <!-- Right Panel (Info & Expansion) -->
+        <div id="right-panel" class="ui-panel w-64 p-4 flex flex-col space-y-6 overflow-y-auto border-l border-gray-700">
+            <!-- Info Panel -->
+            <div id="info-panel-container">
+                 <h3 id="info-title" class="font-bold text-lg mb-2 border-b border-gray-600 pb-2">Selection Info</h3>
+                 <div id="info-content" class="text-sm space-y-1 text-gray-300 pt-2">Click on a tile on the map to see its details.</div>
+            </div>
+            <!-- Expansion Panel -->
+            <div id="expansion-panel">
+                 <h3 class="font-bold text-lg mb-2 border-b border-gray-600 pb-2">Map Expansion</h3>
+                 <div class="pt-2">
+                    <p id="expansion-cost-text" class="text-sm text-gray-400 mb-3">Cost: $10000 per chunk</p>
+                    <div class="grid grid-cols-1 gap-2">
+                        <button id="expand-north" class="expand-btn">Expand North (+10 rows)</button>
+                        <button id="expand-west" class="expand-btn">Expand West (+10 cols)</button>
+                        <button id="expand-east" class="expand-btn">Expand East (+10 cols)</button>
+                    </div>
+                 </div>
+            </div>
+             <!-- Stats Panel -->
+            <div id="stats-panel">
+                 <h3 class="font-bold text-lg mb-2 border-b border-gray-600 pb-2">City Finances</h3>
+                 <div class="pt-2 text-sm space-y-2 text-gray-300">
+                    <p><strong>Active Workers:</strong> <span id="workers-display">0</span></p>
+                    <p><strong>Income / 30s:</strong> <span id="income-display" class="text-green-400">$0</span></p>
+                    <p><strong>Expenses / 30s:</strong> <span id="expenses-display" class="text-red-400">$0</span></p>
+                    <p><strong>Net Profit / 30s:</strong> <span id="net-profit-display">$0</span></p>
+                 </div>
+            </div>
+        </div>
+    </div>
+    
+    <!-- Modal for Help/Welcome -->
+    <div id="modal" class="modal-backdrop absolute inset-0 items-center justify-center z-50 hidden">
+        <div class="bg-gray-800 p-8 rounded-lg shadow-2xl max-w-2xl w-full mx-4">
+            <h2 id="modal-title" class="text-2xl font-bold mb-4">Welcome to CitySim!</h2>
+            <div id="modal-content" class="space-y-4 text-gray-300">
+                <!-- Modal content injected by JS -->
+            </div>
+            <button id="modal-close-btn" class="mt-6 px-4 py-2 bg-green-500 hover:bg-green-600 rounded-md font-semibold w-full">Let's Build!</button>
+        </div>
+    </div>
+    
+    <!-- Population Milestone Notification -->
+    <div id="milestone-notification" class="absolute top-24 left-1/2 -translate-x-1/2 bg-green-500 p-4 rounded-lg shadow-lg z-20 hidden opacity-0 transition-opacity duration-500">
+        <p class="font-bold">Population Milestone Reached!</p>
+        <p id="milestone-text"></p>
+    </div>
+
+
+    <script>
+        const canvas = document.getElementById('gameCanvas');
+        const ctx = canvas.getContext('2d');
+        const placementPreview = document.getElementById('placement-preview');
+        const canvasContainer = document.getElementById('canvas-container');
+
+        // --- Game Configuration ---
+        const TILE_SIZE = 24;
+        const GAME_SPEED = 1000; // ms per game day
+        const EXPANSION_COST = 10000;
+        const EXPANSION_SIZE = 10;
+
+        // Building costs
+        const COSTS = {
+            road: 10,
+            residential: 100,
+            commercial: 50,
+            industrial: 150,
+            power_plant: 250,
+            water_tower: 150,
+            police_station: 300,
+            fire_station: 300,
+            park: 100,
+            school: 400,
+            bulldozer: 5,
+        };
+
+        const BUILDING_METADATA = {
+            road: { name: 'Road', color: '#6b7280', width: 1, height: 1 },
+            residential: { name: 'Residential Zone', color: '#10b981', capacity: 5, width: 1, height: 2, rotatable: true },
+            commercial: { name: 'Commercial Zone', color: '#3b82f6', capacity: 3, goods_needed: 1, width: 1, height: 1 },
+            industrial: { name: 'Industrial Zone', color: '#f59e0b', capacity: 4, goods_produced: 2, width: 2, height: 2 },
+            power_plant: { name: 'Power Plant', color: '#ef4444', range: 10, maintenance: 20, width: 1, height: 1 },
+            water_tower: { name: 'Water Tower', color: '#60a5fa', range: 8, maintenance: 15, width: 1, height: 1 },
+            police_station: { name: 'Police Station', color: '#a78bfa', range: 12, maintenance: 25, width: 1, height: 1 },
+            fire_station: { name: 'Fire Station', color: '#f87171', range: 12, maintenance: 25, width: 1, height: 1 },
+            park: { name: 'Park', color: '#22c55e', range: 6, happiness_boost: 0.1, width: 1, height: 1 },
+            school: { name: 'School', color: '#ec4899', range: 15, maintenance: 35, width: 1, height: 1 },
+            highway: { name: 'Highway Connection', color: '#4b5563', width: 1, height: 1 },
+            bulldozer: { name: 'Bulldozer', color: '#ffffff', width: 1, height: 1 },
+        };
+
+        const POPULATION_MILESTONES = [
+            { pop: 100, unlocks: ['police_station', 'fire_station'], text: 'Police & Fire Stations unlocked!' },
+            { pop: 500, unlocks: ['park', 'school'], text: 'Parks & Schools unlocked!' }
+        ];
+
+        // --- Game State ---
+        let grid = [];
+        let buildings = [];
+        let vehicles = [];
+        let money = 5000;
+        let population = 0;
+        let gameDay = 1;
+        let currentSelection = null;
+        let gameInterval;
+        let isPaused = false;
+        let unlockedBuildings = ['road', 'residential', 'commercial', 'industrial', 'power_plant', 'water_tower', 'bulldozer'];
+        let currentGridWidth = 20;
+        let currentGridHeight = 20;
+        let currentRotation = 0; // 0 = vertical, 1 = horizontal
+        let lastFrameTime = 0;
+
+        // Financial State
+        let lastMaintenanceDay = 0;
+        let incomeForDisplay = 0;
+        let expensesForDisplay = 0;
+        let incomeAccumulator = 0;
+        let activeWorkers = 0;
+
+
+        // --- UI Elements ---
+        const moneyDisplay = document.getElementById('money-display');
+        const populationDisplay = document.getElementById('population-display');
+        const dateDisplay = document.getElementById('date-display');
+        const buildMenu = document.getElementById('build-menu');
+        const infoTitle = document.getElementById('info-title');
+        const infoContent = document.getElementById('info-content');
+        const modal = document.getElementById('modal');
+        const pauseBtn = document.getElementById('pause-btn');
+        const workersDisplay = document.getElementById('workers-display');
+        const incomeDisplay = document.getElementById('income-display');
+        const expensesDisplay = document.getElementById('expenses-display');
+        const netProfitDisplay = document.getElementById('net-profit-display');
+
+        // --- Initialization ---
+        function init() {
+            canvas.width = currentGridWidth * TILE_SIZE;
+            canvas.height = currentGridHeight * TILE_SIZE;
+
+            for (let y = 0; y < currentGridHeight; y++) {
+                grid[y] = [];
+                for (let x = 0; x < currentGridWidth; x++) {
+                    grid[y][x] = { type: null, building: null };
+                }
+            }
+            
+            const highwayX = Math.floor(currentGridWidth / 2);
+            const highwayY = currentGridHeight - 1;
+            for(let x = highwayX - 1; x <= highwayX + 1; x++){
+                 if (x >= 0 && x < currentGridWidth) {
+                     const highway = { id: Date.now() + Math.random(), type: 'highway', x: x, y: highwayY, width: 1, height: 1 };
+                     grid[highwayY][x].type = 'highway';
+                     grid[highwayY][x].building = highway;
+                 }
+            }
+            if (highwayY - 1 >= 0) {
+                grid[highwayY - 1][highwayX].type = 'road';
+            }
+
+
+            updateBuildMenu();
+            addEventListeners();
+            showWelcomeModal();
+            gameInterval = setInterval(gameLoop, GAME_SPEED);
+            requestAnimationFrame(animationLoop);
+        }
+        
+        function showWelcomeModal() {
+            document.getElementById('modal-title').innerText = "Welcome to CitySim!";
+            document.getElementById('modal-content').innerHTML = `
+                <p>Your goal is to build a thriving city. Here's how to get started:</p>
+                <ul class="list-disc list-inside space-y-2 mt-4">
+                    <li><strong>Build Roads:</strong> Everything needs to be connected. Extend the main highway into your city.</li>
+                    <li><strong>Zone Areas:</strong> Build Residential, Commercial, and Industrial zones. Press 'R' to rotate rotatable buildings!</li>
+                    <li><strong>Provide Utilities:</strong> Your citizens need Power and Water. Build a Power Plant and a Water Tower. They have limited range!</li>
+                    <li><strong>Watch it Grow:</strong> Your city comes to life with cars and trucks! Workers travel to jobs and trucks deliver goods, earning you money.</li>
+                </ul>`;
+            modal.style.display = 'flex';
+        }
+        
+        function showHelpModal() {
+            document.getElementById('modal-title').innerText = "How to Play";
+             document.getElementById('modal-content').innerHTML = `
+                <p>The core of your city's economy is logistics and workers.</p>
+                <ul class="list-disc list-inside space-y-2 mt-4">
+                    <li><strong>Residential:</strong> Provides workers for your other zones. Must have power and water.</li>
+                    <li><strong>Industrial:</strong> Provides goods for Commercial zones. Needs workers to operate.</li>
+                    <li><strong>Commercial:</strong> Sells goods to generate income. Needs both workers and goods from Industrial zones.</li>
+                    <li><strong>Utilities:</strong> Power Plants and Water Towers supply essential services within a limited radius.</li>
+                    <li><strong>Economy:</strong> Workers and delivery trucks generate income when they reach their destinations. Maintenance costs are deducted every 30 days.</li>
+                </ul>`;
+            modal.style.display = 'flex';
+        }
+
+        // --- Game Loop & Animation Loop ---
+        function gameLoop() {
+            if (isPaused) return;
+            gameDay++;
+            updateSimulation();
+            updateUI();
+        }
+
+        function animationLoop(timestamp) {
+            const deltaTime = (timestamp - lastFrameTime) / 1000; // time in seconds
+            lastFrameTime = timestamp;
+            
+            if (!isPaused) {
+                updateVehicles(deltaTime);
+            }
+            render();
+            requestAnimationFrame(animationLoop);
+        }
+        
+        function updateSimulation() {
+            activeWorkers = 0;
+            let totalMaintenance = 0;
+
+            buildings.forEach(b => {
+                b.hasPower = hasService(b, 'power_plant');
+                b.hasWater = hasService(b, 'water_tower');
+
+                const meta = BUILDING_METADATA[b.type];
+                if(meta && meta.maintenance) totalMaintenance += meta.maintenance;
+                
+                if (b.type === 'commercial' || b.type === 'industrial') {
+                    activeWorkers += (b.workersPresent || 0);
+                }
+            });
+
+            // Update population based on available homes
+            let potentialPopulation = 0;
+            buildings.forEach(b => {
+                 if(b.type === 'residential' && b.hasPower && b.hasWater) {
+                     b.population = BUILDING_METADATA.residential.capacity;
+                     potentialPopulation += b.population;
+                 } else if (b.type === 'residential') {
+                     b.population = 0;
+                 }
+            });
+            population = Math.min(potentialPopulation, population + Math.floor(Math.random() * 3)); // Natural growth
+
+            manageWorkersAndLogistics();
+
+            if (gameDay - lastMaintenanceDay >= 30) {
+                money -= totalMaintenance;
+                incomeForDisplay = incomeAccumulator;
+                expensesForDisplay = totalMaintenance;
+                incomeAccumulator = 0;
+                lastMaintenanceDay = gameDay;
+            }
+
+            checkMilestones();
+        }
+
+        function manageWorkersAndLogistics() {
+            // --- 1. Handle Goods Delivery (Industrial to Commercial) ---
+            const commercialNeedsGoods = buildings.filter(b => b.type === 'commercial' && !b.hasGoods && !b.deliveryTruck && b.hasPower && b.hasWater);
+            const industrialHasGoods = buildings.filter(b => b.type === 'industrial' && b.hasPower && b.hasWater);
+            let availableGoods = industrialHasGoods.length * BUILDING_METADATA.industrial.goods_produced;
+
+            for (const com of commercialNeedsGoods) {
+                if (availableGoods > 0) {
+                    const ind = industrialHasGoods[Math.floor(Math.random() * industrialHasGoods.length)];
+                    if (ind) {
+                        spawnVehicle('truck', ind, com);
+                        availableGoods--;
+                        com.deliveryTruck = true;
+                    }
+                }
+            }
+
+            // --- 2. Dispatch Workers (Residential to Jobs) ---
+            const homesWithAvailableWorkers = buildings.filter(b => 
+                b.type === 'residential' && 
+                b.hasPower && b.hasWater &&
+                (b.workersOut || 0) < b.population &&
+                (gameDay - (b.lastSpawnDay || -999)) > 10 // ~10 second cooldown per worker
+            );
+
+            if (homesWithAvailableWorkers.length > 0) {
+                 const workplacesWithJobs = buildings.filter(b =>
+                    (b.type === 'commercial' || b.type === 'industrial') &&
+                    b.hasPower && b.hasWater &&
+                    (b.workersPresent || 0) < BUILDING_METADATA[b.type].capacity
+                );
+                
+                if(workplacesWithJobs.length > 0) {
+                    // Iterate through all homes with available workers
+                    for (const home of homesWithAvailableWorkers) {
+                        // Find a job for this home's worker
+                        const work = workplacesWithJobs.find(w => (w.workersPresent || 0) < BUILDING_METADATA[w.type].capacity);
+                        
+                        if (work) {
+                            // Found a job, spawn the worker
+                            spawnVehicle('worker', home, work);
+                            home.workersOut = (home.workersOut || 0) + 1;
+                            work.workersPresent = (work.workersPresent || 0) + 1;
+                            home.lastSpawnDay = gameDay;
+                        } else {
+                            // No more jobs available, stop trying to send workers for this cycle
+                            break; 
+                        }
+                    }
+                }
+            }
+            
+            // --- 3. Spawn New Residents from Highway ---
+            let potentialPopulation = buildings.filter(b => b.type === 'residential' && b.hasPower && b.hasWater).reduce((sum, b) => sum + b.population, 0);
+            if(Math.random() < 0.1 && population < potentialPopulation) {
+                 const availableHomes = buildings.filter(b => b.type === 'residential' && b.hasPower && b.hasWater);
+                 if (availableHomes.length > 0) {
+                     spawnVehicle('resident', null, availableHomes[Math.floor(Math.random() * availableHomes.length)]);
+                 }
+            }
+        }
+
+        function checkMilestones() {
+            POPULATION_MILESTONES.forEach(m => {
+                if (population >= m.pop && !unlockedBuildings.includes(m.unlocks[0])) {
+                    m.unlocks.forEach(b => unlockedBuildings.push(b));
+                    updateBuildMenu();
+                    showMilestoneNotification(m.text);
+                }
+            });
+        }
+        
+        function showMilestoneNotification(text) {
+            const notification = document.getElementById('milestone-notification');
+            document.getElementById('milestone-text').innerText = text;
+            notification.style.display = 'block';
+            setTimeout(() => { notification.style.opacity = '1'; }, 10);
+            
+            setTimeout(() => {
+                notification.style.opacity = '0';
+                setTimeout(() => { notification.style.display = 'none'; }, 500);
+            }, 4000);
+        }
+
+        function updateVehicles(deltaTime) {
+            for (let i = vehicles.length - 1; i >= 0; i--) {
+                const v = vehicles[i];
+
+                if (!v.path || v.pathIndex >= v.path.length) {
+                    vehicles.splice(i, 1);
+                    continue;
+                }
+
+                const targetNode = v.path[v.pathIndex];
+                const targetX = targetNode.x * TILE_SIZE + TILE_SIZE / 2;
+                const targetY = targetNode.y * TILE_SIZE + TILE_SIZE / 2;
+
+                const dx = targetX - v.px;
+                const dy = targetY - v.py;
+                const dist = Math.sqrt(dx * dx + dy * dy);
+
+                if (dist < v.speed * deltaTime) {
+                    v.pathIndex++;
+                    if (v.pathIndex >= v.path.length) {
+                        const journeyOver = handleVehicleArrival(v);
+                        if (journeyOver) {
+                            vehicles.splice(i, 1);
+                        }
+                    }
+                } else {
+                    v.px += (dx / dist) * v.speed * deltaTime;
+                    v.py += (dy / dist) * v.speed * deltaTime;
+                }
+            }
+        }
+        
+        function handleVehicleArrival(vehicle) {
+            if (vehicle.type === 'truck') {
+                const com = vehicle.endBuilding;
+                if (com) {
+                    com.hasGoods = true;
+                    com.deliveryTruck = false;
+                    money += 20; // Income from goods delivery
+                    incomeAccumulator += 20;
+                }
+                return true; // Journey is over
+            } else if (vehicle.type === 'resident') {
+                population++;
+                return true; // Journey is over
+            } else if (vehicle.type === 'worker') {
+                if (vehicle.state === 'toWork') {
+                    money += 5; // Tax income from worker arriving
+                    incomeAccumulator += 5;
+                    
+                    const newPath = findRoadPath({ x: vehicle.workBuilding.x, y: vehicle.workBuilding.y }, { x: vehicle.homeBuilding.x, y: vehicle.homeBuilding.y });
+                    if (newPath && newPath.length > 0) {
+                        vehicle.path = newPath;
+                        vehicle.pathIndex = 1;
+                        vehicle.px = newPath[0].x * TILE_SIZE + TILE_SIZE / 2;
+                        vehicle.py = newPath[0].y * TILE_SIZE + TILE_SIZE / 2;
+                        vehicle.state = 'toHome';
+                        return false; // Journey is NOT over, returning home now
+                    }
+                }
+                
+                // If returning home or can't find path back, end the journey.
+                if (vehicle.homeBuilding) vehicle.homeBuilding.workersOut--;
+                if (vehicle.workBuilding) vehicle.workBuilding.workersPresent--;
+                return true;
+            }
+            return true;
+        }
+
+        // --- Rendering ---
+        function render() {
+            ctx.clearRect(0, 0, canvas.width, canvas.height);
+            
+            drawRoads();
+            
+            buildings.forEach(b => {
+                const meta = BUILDING_METADATA[b.type];
+                ctx.fillStyle = meta.color;
+                ctx.fillRect(b.x * TILE_SIZE, b.y * TILE_SIZE, b.width * TILE_SIZE, b.height * TILE_SIZE);
+                drawBuildingDetails(b);
+            });
+
+            // Draw vehicles
+            vehicles.forEach(v => {
+                ctx.fillStyle = v.color;
+                ctx.fillRect(v.px - 3, v.py - 3, 6, 6);
+            });
+        }
+        
+        function drawBuildingDetails(b) {
+            ctx.strokeStyle = 'rgba(0,0,0,0.3)';
+            ctx.lineWidth = 2;
+            const x = b.x * TILE_SIZE;
+            const y = b.y * TILE_SIZE;
+            if (b.type === 'residential') {
+                ctx.fillStyle = '#a16207'; // Brown roof
+                if (b.width > b.height) { // Horizontal
+                    ctx.fillRect(x, y, TILE_SIZE*2, TILE_SIZE*0.4);
+                } else { // Vertical
+                    ctx.fillRect(x, y, TILE_SIZE, TILE_SIZE*0.4);
+                }
+            } else if (b.type === 'commercial') {
+                ctx.fillStyle = '#d1d5db'; // Awning
+                ctx.fillRect(x, y + TILE_SIZE * 0.7, TILE_SIZE, TILE_SIZE * 0.3);
+            } else if (b.type === 'industrial') {
+                 ctx.fillStyle = '#4b5563'; // Darker roof
+                 ctx.fillRect(x, y, TILE_SIZE * 2, TILE_SIZE * 2);
+                 ctx.fillStyle = '#6b7280'; // Smokestack
+                 ctx.fillRect(x + TILE_SIZE * 0.2, y + TILE_SIZE * 0.2, TILE_SIZE * 0.3, TILE_SIZE * 1);
+            }
+            
+             if (!b.hasPower && b.type !== 'power_plant') { drawIcon('⚡', b.x, b.y, '#facc15'); }
+             if (!b.hasWater && b.type !== 'water_tower') { drawIcon('💧', b.x, b.y, '#38bdf8', !b.hasPower); }
+        }
+        
+        function drawRoads() {
+            ctx.fillStyle = '#4b5563'; // Highway color
+            for (let y = 0; y < currentGridHeight; y++) {
+                for (let x = 0; x < currentGridWidth; x++) {
+                    if (grid[y][x].type === 'highway') {
+                         ctx.fillRect(x * TILE_SIZE, y * TILE_SIZE, TILE_SIZE, TILE_SIZE);
+                    }
+                }
+            }
+
+            ctx.strokeStyle = '#d1d5db'; // Lane markers
+            ctx.lineWidth = 2;
+            for (let y = 0; y < currentGridHeight; y++) {
+                for (let x = 0; x < currentGridWidth; x++) {
+                    if (grid[y][x].type !== 'road') continue;
+                    
+                    const isRoad = (dx, dy) => {
+                        const nx = x + dx, ny = y + dy;
+                        return nx >= 0 && nx < currentGridWidth && ny >= 0 && ny < currentGridHeight && (grid[ny][nx].type === 'road' || grid[ny][nx].type === 'highway');
+                    };
+
+                    const up = isRoad(0, -1);
+                    const down = isRoad(0, 1);
+                    const left = isRoad(-1, 0);
+                    const right = isRoad(1, 0);
+
+                    ctx.fillStyle = '#6b7280'; // Road color
+                    ctx.fillRect(x * TILE_SIZE, y * TILE_SIZE, TILE_SIZE, TILE_SIZE);
+                    
+                    if ((up || down) && !left && !right) { // Vertical
+                        ctx.beginPath();
+                        ctx.moveTo(x * TILE_SIZE + TILE_SIZE / 2, y * TILE_SIZE);
+                        ctx.lineTo(x * TILE_SIZE + TILE_SIZE / 2, (y+1) * TILE_SIZE);
+                        ctx.stroke();
+                    } else if ((left || right) && !up && !down) { // Horizontal
+                        ctx.beginPath();
+                        ctx.moveTo(x * TILE_SIZE, y * TILE_SIZE + TILE_SIZE / 2);
+                        ctx.lineTo((x+1) * TILE_SIZE, y * TILE_SIZE + TILE_SIZE / 2);
+                        ctx.stroke();
+                    }
+                }
+            }
+        }
+        
+        function drawIcon(icon, x, y, color, isSecondIcon = false) {
+            ctx.font = `bold ${TILE_SIZE * 0.6}px sans-serif`;
+            ctx.textAlign = 'center';
+            ctx.textBaseline = 'middle';
+            const xOffset = TILE_SIZE / 2;
+            const yOffset = isSecondIcon ? TILE_SIZE * 0.75 : TILE_SIZE * 0.25;
+            ctx.fillStyle = color;
+            ctx.fillText(icon, x * TILE_SIZE + xOffset, y * TILE_SIZE + yOffset);
+        }
+
+        // --- UI Updates ---
+        function updateUI() {
+            moneyDisplay.textContent = `$${Math.floor(money)}`;
+            populationDisplay.textContent = population;
+            dateDisplay.textContent = `Day ${gameDay}`;
+            moneyDisplay.className = money >= 0 ? 'font-semibold text-lg text-green-400' : 'font-semibold text-lg text-red-400';
+            document.getElementById('expansion-cost-text').innerText = `Cost: $${EXPANSION_COST} per chunk`;
+
+            // Update stats panel
+            workersDisplay.textContent = activeWorkers;
+            incomeDisplay.textContent = `$${incomeForDisplay}`;
+            expensesDisplay.textContent = `-$${expensesForDisplay}`;
+            const net = incomeForDisplay - expensesForDisplay;
+            netProfitDisplay.textContent = `${net >= 0 ? '$' : '-$'}${Math.abs(net)}`;
+            netProfitDisplay.className = net >= 0 ? 'text-green-400' : 'text-red-400';
+        }
+
+        function updateBuildMenu() {
+            buildMenu.innerHTML = '';
+            unlockedBuildings.forEach(type => {
+                const meta = BUILDING_METADATA[type];
+                if (!meta) return;
+                const cost = COSTS[type];
+                const btn = document.createElement('button');
+                btn.className = 'build-btn w-full text-left p-2 bg-gray-700 hover:bg-gray-600 rounded-md font-semibold border-2 border-gray-600';
+                btn.innerHTML = `${meta.name}<br><span class="text-xs font-normal text-green-400">$${cost}</span>`;
+                btn.onclick = () => {
+                    currentSelection = type;
+                    document.querySelectorAll('.build-btn').forEach(b => b.classList.remove('selected'));
+                    btn.classList.add('selected');
+                };
+                buildMenu.appendChild(btn);
+            });
+        }
+        
+        function updateInfoPanel(x, y) {
+            const tile = grid[y][x];
+            const building = tile.building;
+
+            if (!building) {
+                 infoTitle.innerText = "Empty Land";
+                 infoContent.innerHTML = `<p><strong>Location:</strong> (${x}, ${y})</p>`;
+                return;
+            }
+            
+            const meta = BUILDING_METADATA[building.type];
+            infoTitle.innerText = meta.name;
+            let content = `<p><strong>Location:</strong> (${building.x}, ${building.y})</p>`;
+            
+            content += `<p><strong>Powered:</strong> ${building.hasPower ? 'Yes' : 'No'}</p>`;
+            content += `<p><strong>Water:</strong> ${building.hasWater ? 'Yes' : 'No'}</p>`;
+            if (building.type === 'residential') {
+                content += `<p><strong>Population:</strong> ${building.population || 0} / ${meta.capacity}</p>`;
+                 content += `<p><strong>Workers Out:</strong> ${building.workersOut || 0}</p>`;
+            } else if (building.type === 'commercial' || building.type === 'industrial') {
+                content += `<p><strong>Workers:</strong> ${building.workersPresent || 0} / ${meta.capacity}</p>`;
+                if(building.type === 'commercial') content += `<p><strong>Has Goods:</strong> ${building.hasGoods ? 'Yes' : 'No'}</p>`;
+            }
+            infoContent.innerHTML = content;
+        }
+
+        // --- Event Handling ---
+        function addEventListeners() {
+            canvas.addEventListener('mousemove', handleCanvasMouseMove);
+            canvas.addEventListener('mouseleave', () => placementPreview.style.display = 'none');
+            canvas.addEventListener('click', handleCanvasClick);
+            document.addEventListener('keydown', e => {
+                if (e.key === 'r' || e.key === 'R') {
+                    currentRotation = (currentRotation + 1) % 2;
+                }
+            });
+            document.getElementById('modal-close-btn').addEventListener('click', () => { modal.style.display = 'none'; });
+            document.getElementById('help-btn').addEventListener('click', showHelpModal);
+            pauseBtn.addEventListener('click', () => {
+                isPaused = !isPaused;
+                pauseBtn.textContent = isPaused ? 'Resume' : 'Pause';
+                pauseBtn.className = isPaused ? 'px-4 py-2 bg-green-500 hover:bg-green-600 rounded-md font-semibold' : 'px-4 py-2 bg-yellow-500 hover:bg-yellow-600 rounded-md font-semibold';
+            });
+            document.getElementById('expand-north').addEventListener('click', () => expandMap('north'));
+            document.getElementById('expand-west').addEventListener('click', () => expandMap('west'));
+            document.getElementById('expand-east').addEventListener('click', () => expandMap('east'));
+        }
+
+        function getMouseGridPos(e) {
+            const rect = canvas.getBoundingClientRect();
+            const mouseX = e.clientX - rect.left;
+            const mouseY = e.clientY - rect.top;
+            const gridX = Math.floor(mouseX / TILE_SIZE);
+            const gridY = Math.floor(mouseY / TILE_SIZE);
+            return {gridX, gridY};
+        }
+
+        function handleCanvasMouseMove(e) {
+            if (!currentSelection) return;
+            const {gridX, gridY} = getMouseGridPos(e);
+            const meta = BUILDING_METADATA[currentSelection];
+            let width = meta.width;
+            let height = meta.height;
+            if (meta.rotatable && currentRotation === 1) {
+                [width, height] = [height, width];
+            }
+            
+            placementPreview.style.display = 'block';
+            placementPreview.style.left = `${canvas.offsetLeft + gridX * TILE_SIZE}px`;
+            placementPreview.style.top = `${canvas.offsetTop + gridY * TILE_SIZE}px`;
+            placementPreview.style.width = `${width * TILE_SIZE}px`;
+            placementPreview.style.height = `${height * TILE_SIZE}px`;
+        }
+        
+        function handleCanvasClick(e) {
+            const {gridX, gridY} = getMouseGridPos(e);
+            if (gridX < 0 || gridX >= currentGridWidth || gridY < 0 || gridY >= currentGridHeight) return;
+            updateInfoPanel(gridX, gridY);
+
+            if (currentSelection) {
+                if (currentSelection === 'bulldozer') {
+                    bulldoze(gridX, gridY);
+                } else {
+                    placeBuilding(gridX, gridY, currentSelection);
+                }
+            }
+        }
+        
+        // --- Building & Map Logic ---
+        function placeBuilding(x, y, type) {
+            const meta = BUILDING_METADATA[type];
+            let width = meta.width, height = meta.height;
+            if(meta.rotatable && currentRotation === 1) [width, height] = [height, width];
+
+            if (x + width > currentGridWidth || y + height > currentGridHeight) return;
+
+            // Check if area is clear
+            for (let i = 0; i < width; i++) {
+                for (let j = 0; j < height; j++) {
+                    if (grid[y+j][x+i].type) return;
+                }
+            }
+            if (money < COSTS[type]) return;
+            if (type !== 'road' && !hasAdjacentRoad(x, y, width, height)) return;
+
+            money -= COSTS[type];
+            const newBuilding = { 
+                id: Date.now() + Math.random(), type, x, y, width, height, 
+                hasPower: false, hasWater: false,
+                workersOut: 0, lastSpawnDay: 0, workersPresent: 0
+            };
+            if(type !== 'road') buildings.push(newBuilding);
+            
+            for (let i = 0; i < width; i++) {
+                for (let j = 0; j < height; j++) {
+                    grid[y+j][x+i].type = type;
+                    grid[y+j][x+i].building = newBuilding;
+                }
+            }
+            updateUI();
+        }
+
+        function bulldoze(x, y) {
+            const tile = grid[y][x];
+            const buildingToDestroy = tile.building;
+            if (!buildingToDestroy || buildingToDestroy.type === 'highway') return;
+            if (money < COSTS.bulldozer) return;
+            money -= COSTS.bulldozer;
+
+            for (let i = 0; i < buildingToDestroy.width; i++) {
+                for (let j = 0; j < buildingToDestroy.height; j++) {
+                    grid[buildingToDestroy.y+j][buildingToDestroy.x+i] = { type: null, building: null };
+                }
+            }
+            
+            const buildingIndex = buildings.findIndex(b => b.id === buildingToDestroy.id);
+            if(buildingIndex > -1) buildings.splice(buildingIndex, 1);
+            updateUI();
+        }
+        
+        // --- Logistics, Pathfinding & Connectivity ---
+        function spawnVehicle(type, startBuilding, endBuilding) {
+            let startCoords, endCoords;
+            if (type === 'resident') { // New resident from highway
+                const highwayX = Math.floor(currentGridWidth / 2);
+                startCoords = {x: highwayX, y: currentGridHeight - 1};
+                endCoords = {x: endBuilding.x, y: endBuilding.y};
+            } else {
+                 startCoords = {x: startBuilding.x, y: startBuilding.y};
+                 endCoords = {x: endBuilding.x, y: endBuilding.y};
+            }
+
+            const path = findRoadPath(startCoords, endCoords);
+            if(path && path.length > 0) {
+                const vehicle = {
+                    px: path[0].x * TILE_SIZE + TILE_SIZE/2,
+                    py: path[0].y * TILE_SIZE + TILE_SIZE/2,
+                    path: path,
+                    pathIndex: 1,
+                    type: type,
+                    speed: 50 + Math.random() * 20,
+                    color: type === 'truck' ? '#f59e0b' : (type === 'worker' ? '#e5e7eb' : '#ec4899'),
+                };
+
+                if (type === 'worker') {
+                    vehicle.state = 'toWork';
+                    vehicle.homeBuilding = startBuilding;
+                    vehicle.workBuilding = endBuilding;
+                } else {
+                    vehicle.startBuilding = startBuilding;
+                    vehicle.endBuilding = endBuilding;
+                }
+                vehicles.push(vehicle);
+            }
+        }
+
+        function findRoadPath(startCoords, endCoords) {
+            const startNode = findNearestRoad(startCoords.x, startCoords.y);
+            const endNode = findNearestRoad(endCoords.x, endCoords.y);
+
+            if(!startNode || !endNode) return null;
+
+            let queue = [[startNode]];
+            const visited = new Set([`${startNode.x},${startNode.y}`]);
+            const neighbors = [[0,1],[0,-1],[1,0],[-1,0]];
+
+            while(queue.length > 0) {
+                const path = queue.shift();
+                const node = path[path.length - 1];
+
+                if(node.x === endNode.x && node.y === endNode.y) {
+                    return path;
+                }
+
+                for(const [dx,dy] of neighbors) {
+                    const nx = node.x + dx, ny = node.y + dy;
+                    const key = `${nx},${ny}`;
+
+                    if(nx >= 0 && nx < currentGridWidth && ny >= 0 && ny < currentGridHeight && !visited.has(key)) {
+                        const tileType = grid[ny][nx].type;
+                        if(tileType === 'road' || tileType === 'highway') {
+                            visited.add(key);
+                            const newPath = [...path, {x: nx, y: ny}];
+                            queue.push(newPath);
+                        }
+                    }
+                }
+            }
+            return null;
+        }
+
+        function findNearestRoad(x, y) {
+            // Check adjacent first
+            const adjacent = [[0,1],[0,-1],[1,0],[-1,0]];
+            for(const [dx,dy] of adjacent) {
+                const nx = x + dx, ny = y + dy;
+                if(nx >= 0 && nx < currentGridWidth && ny >= 0 && ny < currentGridHeight && isRoadTile(nx, ny)) return {x: nx, y: ny};
+            }
+            // Check diagonals
+             const diagonal = [[1,1],[1,-1],[-1,1],[-1,-1]];
+             for(const [dx,dy] of diagonal) {
+                const nx = x + dx, ny = y + dy;
+                if(nx >= 0 && nx < currentGridWidth && ny >= 0 && ny < currentGridHeight && isRoadTile(nx, ny)) return {x: nx, y: ny};
+            }
+            return null;
+        }
+
+        function hasAdjacentRoad(x, y, width, height) {
+            // Check along top and bottom edges
+            for (let i = 0; i < width; i++) {
+                if ( (y > 0 && isRoadTile(x+i, y-1)) || (y+height < currentGridHeight && isRoadTile(x+i, y+height)) ) return true;
+            }
+            // Check along left and right edges
+            for (let j = 0; j < height; j++) {
+                 if ( (x > 0 && isRoadTile(x-1, y+j)) || (x+width < currentGridWidth && isRoadTile(x+width, y+j)) ) return true;
+            }
+            return false;
+        }
+        
+        function isRoadTile(x,y) {
+            const type = grid[y][x].type;
+            return type === 'road' || type === 'highway';
+        }
+        
+        function expandMap(direction) {
+            if (money < EXPANSION_COST) return;
+            money -= EXPANSION_COST;
+            if (direction === 'north') {
+                const newRows = Array.from({ length: EXPANSION_SIZE }, () => Array.from({ length: currentGridWidth }, () => ({ type: null, building: null })));
+                grid.unshift(...newRows);
+                buildings.forEach(b => { b.y += EXPANSION_SIZE; });
+                currentGridHeight += EXPANSION_SIZE;
+            } else if (direction === 'west') {
+                for (let y = 0; y < currentGridHeight; y++) {
+                    grid[y].unshift(...Array.from({ length: EXPANSION_SIZE }, () => ({ type: null, building: null })));
+                }
+                buildings.forEach(b => { b.x += EXPANSION_SIZE; });
+                currentGridWidth += EXPANSION_SIZE;
+            } else if (direction === 'east') {
+                for (let y = 0; y < currentGridHeight; y++) {
+                    grid[y].push(...Array.from({ length: EXPANSION_SIZE }, () => ({ type: null, building: null })));
+                }
+                currentGridWidth += EXPANSION_SIZE;
+            }
+            canvas.width = currentGridWidth * TILE_SIZE;
+            canvas.height = currentGridHeight * TILE_SIZE;
+            updateUI();
+        }
+
+        // --- Utility ---
+        function hasService(building, serviceType) {
+            const range = BUILDING_METADATA[serviceType].range;
+            for (const serviceBuilding of buildings) {
+                if (serviceBuilding.type === serviceType) {
+                    const dist = Math.abs(building.x - serviceBuilding.x) + Math.abs(building.y - serviceBuilding.y);
+                    if (dist <= range) return true;
+                }
+            }
+            return false;
+        }
+
+        window.onload = init;
+
+    </script>
+</body>
+</html>

@@ -1,0 +1,663 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Global Theater: Modern Conflict</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <style>
+        @import url('https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;700&display=swap');
+        
+        body {
+            font-family: 'JetBrains+Mono', monospace;
+            background-color: #0a0a0c;
+            color: #e0e0e0;
+            overflow: hidden;
+            display: flex;
+            flex-direction: column;
+            height: 100vh;
+            margin: 0;
+            user-select: none;
+        }
+
+        .map-container {
+            background: radial-gradient(circle, #1a1a2e 0%, #0a0a0c 100%);
+            position: relative;
+            flex-grow: 1;
+            border: 1px solid #333;
+            border-radius: 8px;
+            overflow: hidden;
+            min-height: 0;
+        }
+
+        .region {
+            transition: all 0.3s ease;
+            cursor: pointer;
+            stroke-width: 2;
+        }
+
+        .region:hover { filter: brightness(1.2); }
+
+        .ui-panel {
+            background: rgba(20, 20, 25, 0.95);
+            border: 1px solid #444;
+            backdrop-filter: blur(10px);
+        }
+
+        .log-container {
+            flex-grow: 1;
+            overflow-y: auto;
+            font-size: 0.75rem;
+            scrollbar-width: thin;
+        }
+
+        .btn-action {
+            background: #2a2a35;
+            border: 1px solid #555;
+            transition: all 0.2s;
+        }
+
+        .btn-action:hover:not(:disabled) { background: #3f3f4f; }
+
+        .faction-player { fill: #3b82f6; stroke: #60a5fa; fill-opacity: 0.6; }
+        .faction-ai { fill: #ef4444; stroke: #f87171; fill-opacity: 0.6; }
+        .faction-neutral { fill: #4b5563; stroke: #9ca3af; fill-opacity: 0.6; }
+        .active-region { stroke: #fff !important; stroke-width: 4 !important; }
+
+        #battle-canvas {
+            background: #1a1d1a;
+            cursor: default;
+        }
+
+        .scanline {
+            width: 100%; height: 100%; position: absolute; top: 0; left: 0;
+            background: linear-gradient(to bottom, rgba(18, 16, 16, 0) 50%, rgba(0, 0, 0, 0.15) 50%);
+            background-size: 100% 4px; pointer-events: none; z-index: 10;
+        }
+
+        .ability-btn {
+            border: 2px solid #fbbf24;
+            background: rgba(251, 191, 36, 0.1);
+        }
+        .ability-btn:hover { background: rgba(251, 191, 36, 0.3); }
+        .ability-btn.active { background: #fbbf24; color: #000; }
+    </style>
+</head>
+<body class="p-2 sm:p-4">
+
+    <!-- Top Stats -->
+    <div class="grid grid-cols-4 gap-2 mb-2 sm:mb-4 shrink-0">
+        <div class="ui-panel p-2 rounded border-l-4 border-blue-500">
+            <div class="text-[10px] text-gray-400 uppercase">Treasury</div>
+            <div id="stat-money" class="text-sm sm:text-lg font-bold text-green-400">$0M</div>
+        </div>
+        <div class="ui-panel p-2 rounded border-l-4 border-red-500">
+            <div class="text-[10px] text-gray-400 uppercase">Commanders</div>
+            <div id="stat-manpower" class="text-sm sm:text-lg font-bold text-orange-400">0</div>
+        </div>
+        <div class="ui-panel p-2 rounded border-l-4 border-yellow-500">
+            <div class="text-[10px] text-gray-400 uppercase">Air Wings</div>
+            <div id="stat-jets" class="text-sm sm:text-lg font-bold text-yellow-400">0</div>
+        </div>
+        <div class="ui-panel p-2 rounded border-l-4 border-purple-500 text-center">
+            <div class="text-[10px] text-gray-400 uppercase">Cycle</div>
+            <div id="stat-turn" class="text-sm sm:text-lg font-bold">1</div>
+        </div>
+    </div>
+
+    <div class="flex flex-col md:flex-row gap-4 flex-grow min-height-0 overflow-hidden">
+        <!-- Strategic Map View -->
+        <div id="main-view" class="flex-grow relative map-container shadow-2xl">
+            <div class="scanline"></div>
+            <svg id="game-map" viewBox="0 0 800 500" class="w-full h-full">
+                <!-- SVG Regions -->
+            </svg>
+            
+            <div id="region-hover-card" class="absolute bottom-4 left-4 ui-panel p-2 rounded hidden pointer-events-none text-xs">
+                <div id="hover-name" class="font-bold">Region</div>
+                <div id="hover-owner">Status: Unknown</div>
+            </div>
+
+            <!-- RTS Battle Overlay -->
+            <div id="battle-overlay" class="absolute inset-0 bg-black/95 hidden z-40 flex flex-col items-center justify-center p-2 sm:p-6">
+                <div class="w-full h-full flex flex-col bg-zinc-900 border-2 border-zinc-700 rounded-lg overflow-hidden shadow-2xl">
+                    <div class="flex justify-between items-center bg-zinc-800 p-3 border-b border-zinc-700">
+                        <div class="flex items-center gap-4">
+                            <span class="text-red-500 font-bold tracking-widest text-sm animate-pulse">TACTICAL INTERFACE</span>
+                            <span id="battle-timer" class="text-white font-mono bg-black px-2 py-1 rounded border border-zinc-600">02:00</span>
+                        </div>
+                        <div class="flex gap-2">
+                            <button id="ability-airstrike" class="ability-btn px-4 py-1 text-xs rounded font-bold transition-all">CALL AIRSTRIKE (0)</button>
+                            <button onclick="gameState.selectAllUnits()" class="bg-blue-600 text-white px-4 py-1 text-xs rounded font-bold hover:bg-blue-500">SELECT ALL</button>
+                        </div>
+                    </div>
+                    
+                    <canvas id="battle-canvas" class="flex-grow w-full"></canvas>
+                    
+                    <div class="grid grid-cols-3 bg-zinc-800 p-2 text-[10px] border-t border-zinc-700">
+                        <div class="text-blue-400 font-bold">BLUEFOR: <span id="b-blue">0</span></div>
+                        <div class="text-center text-gray-400">R-CLICK TO MOVE / ATTACK</div>
+                        <div class="text-red-400 font-bold text-right">OPFOR: <span id="b-red">0</span></div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Sidebar -->
+        <div class="w-full md:w-80 flex flex-col gap-4 shrink-0 overflow-hidden">
+            <div class="ui-panel p-4 rounded flex flex-col min-h-0">
+                <h2 class="text-blue-400 font-bold mb-2 uppercase text-[10px] tracking-widest border-b border-gray-700 pb-1">Command Center</h2>
+                
+                <div id="selection-empty" class="text-gray-500 italic text-center py-6 text-xs">
+                    Select a territory to review assets...
+                </div>
+
+                <div id="selection-details" class="hidden flex flex-col overflow-y-auto">
+                    <div class="flex justify-between items-center mb-4">
+                        <span id="selected-name" class="text-sm font-bold">Region</span>
+                        <span id="selected-tag" class="text-[9px] px-2 py-0.5 rounded font-bold">STATUS</span>
+                    </div>
+
+                    <div class="grid grid-cols-2 gap-2 mb-4 text-[10px]">
+                        <div class="bg-black/40 p-2 rounded border border-gray-800">
+                            <div class="text-gray-500">INFANTRY</div>
+                            <div id="sel-inf" class="text-sm font-bold">0</div>
+                        </div>
+                        <div class="bg-black/40 p-2 rounded border border-gray-800">
+                            <div class="text-gray-500">ARMOR</div>
+                            <div id="sel-tanks" class="text-sm font-bold">0</div>
+                        </div>
+                    </div>
+
+                    <div id="player-actions" class="space-y-1.5 mb-2">
+                        <button onclick="gameState.recruit('infantry')" class="btn-action w-full py-2 text-[10px] rounded flex justify-between px-3">
+                            <span>Train Infantry</span>
+                            <span class="text-green-500">$5M</span>
+                        </button>
+                        <button onclick="gameState.recruit('tanks')" class="btn-action w-full py-2 text-[10px] rounded flex justify-between px-3">
+                            <span>Armor Division</span>
+                            <span class="text-green-500">$15M</span>
+                        </button>
+                        <button onclick="gameState.recruit('jets')" class="btn-action w-full py-2 text-[10px] rounded flex justify-between px-3">
+                            <span>Air Wing</span>
+                            <span class="text-green-500">$30M</span>
+                        </button>
+                        <button id="btn-invade" onclick="gameState.prepareInvasion()" class="w-full py-3 text-[10px] rounded mt-2 bg-red-900 hover:bg-red-800 border border-red-500 font-bold">
+                            ORDER OFFENSIVE
+                        </button>
+                    </div>
+                </div>
+            </div>
+
+            <div class="ui-panel p-3 rounded flex flex-col flex-grow min-h-0">
+                <div class="text-[9px] text-gray-500 mb-1 tracking-widest uppercase font-bold">Communications</div>
+                <div id="game-log" class="log-container space-y-1 pr-2 font-mono"></div>
+            </div>
+
+            <button onclick="gameState.endTurn()" class="w-full py-3 bg-blue-700 hover:bg-blue-600 text-white font-bold rounded shadow-lg transition-all text-xs">
+                FINALIZE CYCLE
+            </button>
+        </div>
+    </div>
+
+    <!-- Invasion Setup Modal -->
+    <div id="modal-overlay" class="fixed inset-0 bg-black/90 hidden z-50 flex items-center justify-center p-4">
+        <div id="invasion-modal" class="ui-panel p-6 rounded-lg max-w-sm w-full border-t-4 border-red-600">
+            <h2 class="text-lg font-bold mb-2 text-red-500 uppercase">Deploy Forces</h2>
+            <p id="invasion-desc" class="mb-4 text-[10px] text-gray-400 leading-relaxed"></p>
+            <div class="space-y-4 mb-6">
+                <div>
+                    <label class="text-[9px] text-gray-500 font-bold uppercase">Infantry Battalion</label>
+                    <input type="range" id="inv-inf-range" class="w-full h-1 bg-gray-800 rounded appearance-none cursor-pointer accent-red-500">
+                    <div class="flex justify-between text-[10px] mt-1"><span id="inv-inf-val">0</span><span>Ready</span></div>
+                </div>
+                <div>
+                    <label class="text-[9px] text-gray-500 font-bold uppercase">Armor Platoon</label>
+                    <input type="range" id="inv-tank-range" class="w-full h-1 bg-gray-800 rounded appearance-none cursor-pointer accent-red-500">
+                    <div class="flex justify-between text-[10px] mt-1"><span id="inv-tank-val">0</span><span>Ready</span></div>
+                </div>
+            </div>
+            <div class="flex gap-2">
+                <button onclick="gameState.closeInvasion()" class="flex-1 py-2 bg-zinc-800 text-[10px] rounded font-bold">ABORT</button>
+                <button onclick="gameState.executeInvasion()" class="flex-1 py-2 bg-red-700 text-[10px] rounded font-bold hover:bg-red-600">INITIATE</button>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        const REGIONS_DATA = [
+            { id: 'na', name: 'Americas (North)', owner: 'player', value: 80, points: "40,40 190,40 210,130 180,180 130,170 120,200 60,190 30,100" },
+            { id: 'sa', name: 'Americas (South)', owner: 'neutral', value: 40, points: "135,185 185,185 240,250 230,450 180,480 140,400 120,280" },
+            { id: 'eu', name: 'Europe', owner: 'neutral', value: 70, points: "350,30 460,30 480,110 440,150 340,140 330,80" },
+            { id: 'af', name: 'Africa', owner: 'neutral', value: 50, points: "350,155 450,155 510,230 480,450 380,450 330,280" },
+            { id: 'ru', name: 'Eurasia', owner: 'ai', value: 90, points: "475,25 750,25 780,150 650,180 500,160 470,100" },
+            { id: 'as', name: 'Asia Pacific', owner: 'neutral', value: 85, points: "515,165 660,185 750,200 750,350 600,400 520,330" },
+            { id: 'au', name: 'Oceania', owner: 'neutral', value: 30, points: "600,410 750,380 780,480 650,480" }
+        ];
+
+        const COSTS = { infantry: 5, tanks: 15, jets: 30 };
+
+        const gameState = {
+            turn: 1,
+            player: { money: 120, manpower: 50 },
+            regions: {},
+            selectedId: null,
+            battle: { 
+                active: false, 
+                units: [], 
+                terrain: [],
+                timer: 240, 
+                jets: 0, 
+                abilityActive: false,
+                selection: [],
+                mousePos: {x:0, y:0}
+            },
+
+            init() {
+                REGIONS_DATA.forEach(r => {
+                    this.regions[r.id] = {
+                        ...r,
+                        units: {
+                            infantry: r.owner === 'neutral' ? 4 : (r.owner === 'player' ? 10 : 15),
+                            tanks: r.owner === 'neutral' ? 1 : (r.owner === 'player' ? 2 : 5),
+                            jets: r.owner === 'player' ? 1 : 0
+                        },
+                        fortification: r.owner === 'ai' ? 10 : 0
+                    };
+                });
+                this.renderMap();
+                this.updateUI();
+                this.log("SECURE NETWORK ESTABLISHED. WELCOME, COMMANDER.");
+                
+                const canvas = document.getElementById('battle-canvas');
+                canvas.addEventListener('mousedown', (e) => this.handleBattleClick(e));
+                canvas.addEventListener('mousemove', (e) => {
+                    const rect = canvas.getBoundingClientRect();
+                    this.battle.mousePos = { x: e.clientX - rect.left, y: e.clientY - rect.top };
+                });
+                canvas.addEventListener('contextmenu', (e) => e.preventDefault());
+                
+                document.getElementById('ability-airstrike').addEventListener('click', () => {
+                    if (this.battle.jets > 0) this.battle.abilityActive = !this.battle.abilityActive;
+                });
+            },
+
+            renderMap() {
+                const mapSvg = document.getElementById('game-map');
+                mapSvg.innerHTML = '';
+                Object.values(this.regions).forEach(region => {
+                    const poly = document.createElementNS("http://www.w3.org/2000/svg", "polygon");
+                    poly.setAttribute("points", region.points);
+                    poly.setAttribute("id", `poly-${region.id}`);
+                    poly.setAttribute("class", `region faction-${region.owner}`);
+                    poly.addEventListener('mouseenter', (e) => this.showHover(region));
+                    poly.addEventListener('mouseleave', () => this.hideHover());
+                    poly.addEventListener('click', () => this.selectRegion(region.id));
+                    mapSvg.appendChild(poly);
+                });
+            },
+
+            updateUI() {
+                document.getElementById('stat-money').innerText = `$${this.player.money}M`;
+                document.getElementById('stat-manpower').innerText = `${this.player.manpower}`;
+                const totalJets = Object.values(this.regions).filter(r => r.owner === 'player').reduce((s, r) => s + r.units.jets, 0);
+                document.getElementById('stat-jets').innerText = totalJets;
+                document.getElementById('stat-turn').innerText = this.turn;
+
+                if (this.selectedId) {
+                    const r = this.regions[this.selectedId];
+                    document.getElementById('selection-empty').classList.add('hidden');
+                    document.getElementById('selection-details').classList.remove('hidden');
+                    document.getElementById('selected-name').innerText = r.name;
+                    document.getElementById('selected-tag').innerText = r.owner.toUpperCase();
+                    document.getElementById('selected-tag').className = `text-[9px] px-2 py-0.5 rounded font-bold ${r.owner === 'player' ? 'bg-blue-900' : 'bg-red-900'}`;
+                    document.getElementById('sel-inf').innerText = r.units.infantry;
+                    document.getElementById('sel-tanks').innerText = r.units.tanks;
+
+                    const isPlayer = r.owner === 'player';
+                    document.querySelectorAll('#player-actions button:not(#btn-invade)').forEach(b => b.disabled = !isPlayer);
+                    document.getElementById('btn-invade').innerText = isPlayer ? "DEPLOY RESERVES" : "LAUNCH STRIKE";
+                }
+            },
+
+            showHover(region) {
+                const card = document.getElementById('region-hover-card');
+                document.getElementById('hover-name').innerText = region.name;
+                document.getElementById('hover-owner').innerText = `Status: ${region.owner.toUpperCase()}`;
+                card.classList.remove('hidden');
+            },
+
+            hideHover() { document.getElementById('region-hover-card').classList.add('hidden'); },
+
+            selectRegion(id) {
+                if (this.selectedId) document.getElementById(`poly-${this.selectedId}`).classList.remove('active-region');
+                this.selectedId = id;
+                document.getElementById(`poly-${id}`).classList.add('active-region');
+                this.updateUI();
+            },
+
+            log(msg, color = 'text-gray-400') {
+                const log = document.getElementById('game-log');
+                const div = document.createElement('div');
+                div.className = `${color} leading-tight text-[10px] mb-1`;
+                div.innerText = `[${new Date().toLocaleTimeString([], {hour:'2-digit', minute:'2-digit', second:'2-digit'})}] > ${msg}`;
+                log.prepend(div);
+            },
+
+            recruit(type) {
+                if (this.player.money >= COSTS[type]) {
+                    this.player.money -= COSTS[type];
+                    this.regions[this.selectedId].units[type]++;
+                    this.updateUI();
+                    this.log(`${type.toUpperCase()} deployed to ${this.regions[this.selectedId].name}`);
+                }
+            },
+
+            prepareInvasion() {
+                const target = this.regions[this.selectedId];
+                if (target.owner === 'player') return;
+                const playerRegions = Object.values(this.regions).filter(r => r.owner === 'player');
+                const source = playerRegions.sort((a,b) => (b.units.infantry + b.units.tanks) - (a.units.infantry + a.units.tanks))[0];
+                
+                this.sourceId = source.id;
+                this.targetId = target.id;
+
+                document.getElementById('modal-overlay').classList.remove('hidden');
+                document.getElementById('invasion-desc').innerText = `Assemble task force at ${source.name} for operation in ${target.name}. High Command authorizes air support.`;
+                
+                const ir = document.getElementById('inv-inf-range');
+                const tr = document.getElementById('inv-tank-range');
+                ir.max = source.units.infantry; ir.value = Math.ceil(source.units.infantry * 0.7);
+                tr.max = source.units.tanks; tr.value = source.units.tanks;
+                document.getElementById('inv-inf-val').innerText = ir.value;
+                document.getElementById('inv-tank-val').innerText = tr.value;
+
+                ir.oninput = () => document.getElementById('inv-inf-val').innerText = ir.value;
+                tr.oninput = () => document.getElementById('inv-tank-val').innerText = tr.value;
+            },
+
+            closeInvasion() { document.getElementById('modal-overlay').classList.add('hidden'); },
+
+            // --- RTS Tactical Engine (Slowed down, terrain added) ---
+            executeInvasion() {
+                this.closeInvasion();
+                document.getElementById('battle-overlay').classList.remove('hidden');
+                
+                const canvas = document.getElementById('battle-canvas');
+                canvas.width = canvas.parentElement.clientWidth;
+                canvas.height = canvas.parentElement.clientHeight;
+
+                const target = this.regions[this.targetId];
+                const source = this.regions[this.sourceId];
+                
+                this.battle.active = true;
+                this.battle.timer = 120;
+                this.battle.units = [];
+                this.battle.terrain = [];
+                this.battle.jets = source.units.jets;
+                this.battle.abilityActive = false;
+                this.battle.selection = [];
+                
+                document.getElementById('ability-airstrike').innerText = `CALL AIRSTRIKE (${this.battle.jets})`;
+
+                // Generate Random Terrain
+                for (let i = 0; i < 6; i++) {
+                    this.battle.terrain.push({
+                        x: Math.random() * (canvas.width - 200) + 100,
+                        y: Math.random() * (canvas.height - 100) + 50,
+                        w: 40 + Math.random() * 80,
+                        h: 40 + Math.random() * 80
+                    });
+                }
+
+                const infCount = parseInt(document.getElementById('inv-inf-range').value);
+                const tankCount = parseInt(document.getElementById('inv-tank-range').value);
+
+                for (let i = 0; i < infCount; i++) this.spawnUnit('infantry', 'player');
+                for (let i = 0; i < tankCount; i++) this.spawnUnit('tank', 'player');
+                for (let i = 0; i < target.units.infantry; i++) this.spawnUnit('infantry', 'ai');
+                for (let i = 0; i < target.units.tanks; i++) this.spawnUnit('tank', 'ai');
+                
+                const bunkers = Math.floor(target.fortification / 5);
+                for (let i = 0; i < bunkers; i++) this.spawnUnit('bunker', 'ai');
+
+                this.battle.interval = setInterval(() => this.battleLoop(), 1000 / 30);
+                this.log(`ENGAGEMENT: Forces entering target zone. Operations running at tactical speed.`, 'text-red-400 font-bold');
+            },
+
+            spawnUnit(type, faction) {
+                const canvas = document.getElementById('battle-canvas');
+                const isPlayer = faction === 'player';
+                let x = isPlayer ? 40 + (Math.random() * 60) : canvas.width - 80 - (Math.random() * 60);
+                let y = Math.random() * (canvas.height - 100) + 50;
+
+                if (type === 'bunker') {
+                    x = canvas.width - 120;
+                    y = (this.battle.units.filter(u=>u.type==='bunker').length + 1) * (canvas.height / (Math.floor(this.regions[this.targetId].fortification/5) + 1));
+                }
+
+                this.battle.units.push({
+                    id: Math.random(),
+                    type, faction, x, y, tx: x, ty: y,
+                    hp: type === 'tank' ? 150 : (type === 'bunker' ? 400 : 40),
+                    maxHp: type === 'tank' ? 150 : (type === 'bunker' ? 400 : 40),
+                    speed: type === 'tank' ? 0.35 : (type === 'bunker' ? 0 : 0.6), // Slowed down significantly
+                    range: type === 'tank' ? 140 : (type === 'bunker' ? 180 : 50),
+                    damage: type === 'tank' ? 4 : (type === 'bunker' ? 3 : 1),
+                    cooldown: 0,
+                    target: null
+                });
+            },
+
+            handleBattleClick(e) {
+                const canvas = document.getElementById('battle-canvas');
+                const rect = canvas.getBoundingClientRect();
+                const x = e.clientX - rect.left;
+                const y = e.clientY - rect.top;
+
+                if (this.battle.abilityActive) {
+                    this.executeAirStrike(x, y);
+                    this.battle.abilityActive = false;
+                    return;
+                }
+
+                if (e.button === 0) { // Left Click - Select
+                    const hit = this.battle.units.find(u => u.faction === 'player' && Math.sqrt((u.x-x)**2 + (u.y-y)**2) < 15);
+                    if (hit) {
+                        if (!e.shiftKey) this.battle.selection = [];
+                        this.battle.selection.push(hit.id);
+                    } else if (!e.shiftKey) {
+                        this.battle.selection = [];
+                    }
+                } else if (e.button === 2) { // Right Click - Move/Attack
+                    this.battle.selection.forEach(sid => {
+                        const unit = this.battle.units.find(u => u.id === sid);
+                        if (unit) {
+                            unit.tx = x; unit.ty = y;
+                            // Check if clicking an enemy
+                            const enemy = this.battle.units.find(u => u.faction !== 'player' && Math.sqrt((u.x-x)**2 + (u.y-y)**2) < 20);
+                            unit.target = enemy || null;
+                        }
+                    });
+                }
+            },
+
+            selectAllUnits() {
+                this.battle.selection = this.battle.units.filter(u => u.faction === 'player').map(u => u.id);
+            },
+
+            battleLoop() {
+                const canvas = document.getElementById('battle-canvas');
+                const ctx = canvas.getContext('2d');
+                ctx.clearRect(0, 0, canvas.width, canvas.height);
+
+                // Draw Terrain
+                ctx.fillStyle = '#2a2f2a';
+                this.battle.terrain.forEach(t => {
+                    ctx.fillRect(t.x, t.y, t.w, t.h);
+                    ctx.strokeStyle = '#3a3f3a'; ctx.strokeRect(t.x, t.y, t.w, t.h);
+                });
+
+                this.battle.timer -= (1/30);
+                document.getElementById('battle-timer').innerText = Math.ceil(this.battle.timer);
+
+                this.battle.units.forEach(u => {
+                    if (u.hp <= 0) return;
+
+                    // AI Behavior: Defenders hold positions
+                    if (u.faction === 'ai') {
+                        const enemies = this.battle.units.filter(e => e.faction === 'player');
+                        const nearest = enemies.reduce((prev, curr) => {
+                            const d = Math.sqrt((u.x-curr.x)**2 + (u.y-curr.y)**2);
+                            return d < prev.dist ? {unit: curr, dist: d} : prev;
+                        }, {unit: null, dist: Infinity});
+
+                        if (nearest.unit && nearest.dist < u.range * 1.5) {
+                            u.target = nearest.unit;
+                        } else {
+                            u.target = null;
+                        }
+                    }
+
+                    // Combat Logic
+                    if (u.target && u.target.hp > 0) {
+                        const dist = Math.sqrt((u.x-u.target.x)**2 + (u.y-u.target.y)**2);
+                        if (dist <= u.range) {
+                            if (u.cooldown <= 0) {
+                                u.target.hp -= u.damage;
+                                u.cooldown = 30;
+                                ctx.strokeStyle = u.faction === 'player' ? '#60a5fa' : '#f87171';
+                                ctx.lineWidth = 1; ctx.beginPath(); ctx.moveTo(u.x, u.y); ctx.lineTo(u.target.x, u.target.y); ctx.stroke();
+                            }
+                        } else if (u.faction === 'ai') {
+                            // Only move AI slightly toward player if in aggro range
+                            const angle = Math.atan2(u.target.y - u.y, u.target.x - u.x);
+                            u.x += Math.cos(angle) * u.speed * 0.5;
+                            u.y += Math.sin(angle) * u.speed * 0.5;
+                        }
+                    }
+
+                    // Movement Logic (Pathfinding-lite with terrain avoidance)
+                    if (u.faction === 'player' && (Math.abs(u.x - u.tx) > 2 || Math.abs(u.y - u.ty) > 2)) {
+                        const angle = Math.atan2(u.ty - u.y, u.tx - u.x);
+                        const nx = u.x + Math.cos(angle) * u.speed;
+                        const ny = u.y + Math.sin(angle) * u.speed;
+                        
+                        // Simple Terrain Collision
+                        const collision = this.battle.terrain.some(t => nx > t.x && nx < t.x+t.w && ny > t.y && ny < t.y+t.h);
+                        if (!collision) {
+                            u.x = nx; u.y = ny;
+                        } else {
+                            // Slide logic or stop
+                            u.tx = u.x; u.ty = u.y;
+                        }
+                    }
+
+                    if (u.cooldown > 0) u.cooldown--;
+
+                    // Draw Unit
+                    const isSelected = this.battle.selection.includes(u.id);
+                    ctx.fillStyle = u.faction === 'player' ? '#3b82f6' : '#ef4444';
+                    
+                    if (isSelected) {
+                        ctx.strokeStyle = '#fff'; ctx.lineWidth = 1;
+                        ctx.beginPath(); ctx.arc(u.x, u.y, 12, 0, Math.PI*2); ctx.stroke();
+                    }
+
+                    if (u.type === 'tank') {
+                        ctx.fillRect(u.x-7, u.y-7, 14, 14);
+                    } else if (u.type === 'bunker') {
+                        ctx.fillRect(u.x-15, u.y-15, 30, 30);
+                        ctx.strokeStyle = '#555'; ctx.strokeRect(u.x-15, u.y-15, 30, 30);
+                    } else {
+                        ctx.beginPath(); ctx.arc(u.x, u.y, 4, 0, Math.PI*2); ctx.fill();
+                    }
+                    
+                    // HP Bar
+                    ctx.fillStyle = 'rgba(0,0,0,0.5)'; ctx.fillRect(u.x-10, u.y-14, 20, 2);
+                    ctx.fillStyle = '#22c55e'; ctx.fillRect(u.x-10, u.y-14, (u.hp/u.maxHp)*20, 2);
+                });
+
+                // Ability Overlay (Cursor)
+                if (this.battle.abilityActive) {
+                    ctx.strokeStyle = '#fbbf24'; ctx.lineWidth = 2;
+                    ctx.beginPath(); ctx.arc(this.battle.mousePos.x, this.battle.mousePos.y, 50, 0, Math.PI*2); ctx.stroke();
+                    ctx.setLineDash([5, 5]); ctx.stroke(); ctx.setLineDash([]);
+                }
+
+                // Stats & Win/Loss
+                const players = this.battle.units.filter(u => u.faction === 'player' && u.hp > 0).length;
+                const ais = this.battle.units.filter(u => u.faction === 'ai' && u.hp > 0).length;
+                document.getElementById('b-blue').innerText = players;
+                document.getElementById('b-red').innerText = ais;
+                document.getElementById('ability-airstrike').className = `ability-btn px-4 py-1 text-xs rounded font-bold transition-all ${this.battle.abilityActive ? 'active' : ''}`;
+
+                if ((ais === 0 || players === 0 || this.battle.timer <= 0) && this.battle.active) {
+                    this.endBattle(ais === 0);
+                }
+            },
+
+            executeAirStrike(x, y) {
+                if (this.battle.jets <= 0) return;
+                this.battle.jets--;
+                document.getElementById('ability-airstrike').innerText = `CALL AIRSTRIKE (${this.battle.jets})`;
+                
+                const canvas = document.getElementById('battle-canvas');
+                const ctx = canvas.getContext('2d');
+                
+                // Visual Effect
+                ctx.fillStyle = 'white'; ctx.beginPath(); ctx.arc(x, y, 60, 0, Math.PI*2); ctx.fill();
+                
+                this.battle.units.forEach(u => {
+                    const d = Math.sqrt((u.x-x)**2 + (u.y-y)**2);
+                    if (d < 60) u.hp -= 100;
+                });
+                this.log("AIRSTRIKE INBOUND: Ordnance delivered successfully.", "text-yellow-400 font-bold");
+            },
+
+            endBattle(victory) {
+                this.battle.active = false;
+                clearInterval(this.battle.interval);
+                setTimeout(() => {
+                    document.getElementById('battle-overlay').classList.add('hidden');
+                    const target = this.regions[this.targetId];
+                    const source = this.regions[this.sourceId];
+
+                    if (victory) {
+                        target.owner = 'player';
+                        target.units.infantry = Math.max(2, this.battle.units.filter(u=>u.faction==='player'&&u.hp>0&&u.type==='infantry').length);
+                        target.units.tanks = this.battle.units.filter(u=>u.faction==='player'&&u.hp>0&&u.type==='tank').length;
+                        this.log(`MISSION COMPLETE: ${target.name} is under our control.`, "text-green-500 font-bold");
+                    } else {
+                        this.log(`MISSION FAILURE: Task force neutralized in ${target.name}.`, "text-red-500 font-bold");
+                    }
+                    
+                    source.units.infantry -= parseInt(document.getElementById('inv-inf-range').value);
+                    source.units.tanks -= parseInt(document.getElementById('inv-tank-range').value);
+                    if (source.units.infantry < 1) source.units.infantry = 1;
+
+                    this.renderMap(); this.updateUI();
+                }, 1000);
+            },
+
+            endTurn() {
+                this.turn++;
+                let income = 20;
+                Object.values(this.regions).forEach(r => { if (r.owner === 'player') income += (r.value / 2); });
+                this.player.money += Math.floor(income);
+                
+                // AI Reinforcement
+                Object.values(this.regions).filter(r => r.owner === 'ai').forEach(r => {
+                    r.units.infantry += 2;
+                    if (this.turn % 2 === 0) r.units.tanks++;
+                });
+
+                this.log(`CYCLE ${this.turn} COMPLETE. Intelligence data updated.`, "text-purple-400");
+                this.updateUI();
+            }
+        };
+
+        window.onload = () => gameState.init();
+    </script>
+</body>
+</html>

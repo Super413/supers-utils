@@ -1,0 +1,2178 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>MetroFlow Engineer</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+    <style>
+        body {
+            font-family: 'Inter', sans-serif;
+            overflow: hidden;
+            background-color: #1a202c; /* Dark background for the whole page */
+        }
+        canvas {
+            background-color: #2d3748; /* Darker grey for the canvas */
+            cursor: crosshair;
+            display: block;
+        }
+        /* Custom scrollbar for a more modern look */
+        ::-webkit-scrollbar {
+            width: 8px;
+        }
+        ::-webkit-scrollbar-track {
+            background: #2d3748;
+        }
+        ::-webkit-scrollbar-thumb {
+            background: #4a5568;
+            border-radius: 4px;
+        }
+        ::-webkit-scrollbar-thumb:hover {
+            background: #718096;
+        }
+        /* Custom styles for UI elements */
+        .glass-panel {
+            background-color: rgba(45, 55, 72, 0.8);
+            backdrop-filter: blur(10px);
+            border: 1px solid rgba(255, 255, 255, 0.1);
+        }
+        .btn-tool {
+            transition: all 0.2s ease-in-out;
+        }
+        .btn-tool.active {
+            background-color: #4299e1;
+            color: white;
+            box-shadow: 0 0 15px rgba(66, 153, 225, 0.5);
+        }
+        .btn-tool:hover:not(.active) {
+            background-color: #4a5568;
+        }
+        .btn-tool:disabled {
+            opacity: 0.4;
+            cursor: not-allowed;
+        }
+        .stat-card {
+            transition: transform 0.2s ease;
+        }
+        .stat-card:hover {
+            transform: translateY(-5px);
+        }
+        /* Animation for notifications */
+        @keyframes slide-in-left {
+            from { transform: translateX(-100%); opacity: 0; }
+            to { transform: translateX(0); opacity: 1; }
+        }
+        .notification {
+            animation: slide-in-left 0.5s ease-out forwards;
+        }
+        /* Floating text animation */
+        @keyframes float-up {
+            to {
+                transform: translateY(-40px);
+                opacity: 0;
+            }
+        }
+        .floating-text {
+            position: absolute;
+            color: #48bb78; /* Green */
+            font-weight: bold;
+            font-size: 1.2rem;
+            pointer-events: none;
+            animation: float-up 1.5s ease-out forwards;
+            text-shadow: 0 0 5px black;
+        }
+        .tech-card {
+            border: 1px solid #4a5568;
+            transition: all 0.2s ease;
+        }
+        .tech-card.unlocked {
+            background-color: #48bb78;
+            color: #1a202c;
+            border-color: #48bb78;
+        }
+        .tech-card.researchable:hover {
+            background-color: #4a5568;
+            border-color: #718096;
+            transform: translateY(-4px);
+        }
+        .tech-card.locked {
+            opacity: 0.5;
+        }
+        .specialization-card {
+            border: 2px solid #4a5568;
+            transition: all 0.2s ease;
+        }
+        .specialization-card:hover {
+             background-color: #4a5568;
+             border-color: #718096;
+             transform: translateY(-4px);
+        }
+    </style>
+</head>
+<body class="text-gray-200">
+
+    <!-- Main Game Container -->
+    <div id="game-container" class="relative w-full h-screen">
+        <canvas id="gameCanvas"></canvas>
+        <div id="floating-text-container" class="absolute inset-0 pointer-events-none"></div>
+
+        <!-- Top UI Bar - Dashboard -->
+        <div id="dashboard" class="absolute top-0 left-0 right-0 p-2 flex justify-between items-center glass-panel z-10">
+            <div class="flex items-center space-x-6">
+                <h1 class="text-xl font-bold text-white">MetroFlow Engineer</h1>
+                <div id="stats" class="flex space-x-4">
+                    <div class="stat-card bg-gray-800/50 p-2 rounded-lg shadow-lg flex items-center space-x-2">
+                        <span class="text-green-400">💰</span>
+                        <div>
+                            <div class="text-xs text-gray-400">Funds</div>
+                            <div id="money" class="font-semibold text-white">$50,000</div>
+                        </div>
+                    </div>
+                    <div class="stat-card bg-gray-800/50 p-2 rounded-lg shadow-lg flex items-center space-x-2">
+                        <span class="text-blue-400">📈</span>
+                        <div>
+                            <div class="text-xs text-gray-400">Efficiency</div>
+                            <div id="efficiency" class="font-semibold text-white">100%</div>
+                        </div>
+                    </div>
+                     <div class="stat-card bg-gray-800/50 p-2 rounded-lg shadow-lg flex items-center space-x-2">
+                        <span class="text-yellow-400">🚗</span>
+                        <div>
+                            <div class="text-xs text-gray-400">Vehicles</div>
+                            <div id="vehicle-count" class="font-semibold text-white">0</div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+            <div class="flex items-center space-x-2">
+                 <button id="research-button" class="px-3 py-2 bg-purple-500 hover:bg-purple-600 text-white font-bold rounded-lg shadow-md transition-colors">Research</button>
+                 <button id="pause-button" class="px-3 py-2 bg-yellow-500 hover:bg-yellow-600 text-white font-bold rounded-lg shadow-md transition-colors">Pause</button>
+                 <button id="help-button" class="px-3 py-2 bg-blue-500 hover:bg-blue-600 text-white font-bold rounded-lg shadow-md transition-colors">?</button>
+            </div>
+        </div>
+        
+        <!-- Build Toolbar -->
+        <div id="toolbar" class="absolute bottom-4 left-1/2 -translate-x-1/2 flex space-x-1 p-2 rounded-xl glass-panel z-10 overflow-x-auto">
+             <button class="btn-tool active p-3 rounded-lg" data-tool="select" title="Select Tool (Q)">
+                <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 3l7.07 16.97 2.51-7.39 7.39-2.51L3 3z"></path><path d="M13 13l6 6"></path></svg>
+            </button>
+            <button class="btn-tool p-3 rounded-lg" data-tool="road" title="Build Road (W)">
+                <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 13.5V4a2 2 0 0 1 2-2h4"></path><path d="M16 10h4a2 2 0 0 1 2 2v8.5"></path><path d="M12 2v20"></path></svg>
+            </button>
+            <button class="btn-tool p-3 rounded-lg" data-tool="upgrade" title="Upgrade Road (E)" disabled>
+                 <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12h14"></path><path d="m12 5 7 7-7 7"></path></svg>
+            </button>
+            <button class="btn-tool p-3 rounded-lg" data-tool="service" title="Build Service Area (B)" disabled>
+                <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6"></path><path d="M12 1v2"></path><path d="M12 21v2"></path></svg>
+            </button>
+             <button class="btn-tool p-3 rounded-lg" data-tool="toll" title="Build Toll Booth (Y)" disabled>
+                <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 6V4a2 2 0 0 1 2-2h12a2 2 0 0 1 2 2v2"></path><path d="M4 18v2a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-2"></path><path d="M12 6v12"></path><path d="M4 12h16"></path></svg>
+            </button>
+             <button class="btn-tool p-3 rounded-lg" data-tool="maintenance" title="Build Maintenance Depot (M)" disabled>
+                <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14.7 6.3a1 1 0 0 0 0 1.4l1.6 1.6a1 1 0 0 0 1.4 0l3.77-3.77a6 6 0 0 1-7.94 7.94l-6.91 6.91a2.12 2.12 0 0 1-3-3l6.91-6.91a6 6 0 0 1 7.94-7.94l-3.76 3.76z"></path></svg>
+            </button>
+            <button class="btn-tool p-3 rounded-lg" data-tool="bus_depot" title="Build Bus Depot (U)" disabled>
+                <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M19 17h2c.6 0 1-.4 1-1v-3.2c0-.4-.2-.8-.4-1.1l-2.3-2.3c-.3-.3-.7-.5-1.1-.5H6.8c-.4 0-.8.2-1.1.5l-2.3 2.3c-.2.3-.4.7-.4 1.1V16c0 .6.4 1 1 1h2"></path><path d="M19 17v2c0 .6-.4 1-1 1H6c-.6 0-1-.4-1-1v-2"></path><circle cx="8" cy="17" r="2"></circle><circle cx="16" cy="17" r="2"></circle></svg>
+            </button>
+            <button class="btn-tool p-3 rounded-lg" data-tool="research_center" title="Build Research Center (I)" disabled>
+                <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14.5 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V7.5L14.5 2z"></path><polyline points="14 2 14 8 20 8"></polyline><circle cx="10" cy="14" r="2"></circle><path d="m12 12 1.5 1.5"></path></svg>
+            </button>
+             <button class="btn-tool p-3 rounded-lg" data-tool="park" title="Build Park (P)" disabled>
+                <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 22s-8-4.5-8-11.8A8 8 0 0 1 12 2a8 8 0 0 1 8 8.2c0 7.3-8 11.8-8 11.8z"></path><path d="M12 12a3 3 0 1 0 0-6 3 3 0 0 0 0 6z"></path></svg>
+            </button>
+             <button class="btn-tool p-3 rounded-lg" data-tool="warehouse" title="Build Warehouse (K)" disabled>
+                 <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M22 12h-6l-2 3h-4l-2-3H2"></path><path d="M5.45 5.11 2 12v6a2 2 0 0 0 2 2h16a2 2 0 0 0 2-2v-6l-3.45-6.89A2 2 0 0 0 16.76 4H7.24a2 2 0 0 0-1.79 1.11z"></path><line x1="6" x2="6.01" y1="16" y2="16"></line><line x1="18" x2="18.01" y1="16" y2="16"></line></svg>
+            </button>
+            <button class="btn-tool p-3 rounded-lg" data-tool="demolish" title="Demolish (T)">
+                <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 22a10 10 0 1 1 0-20 10 10 0 0 1 0 20Z"></path><path d="m15 9-6 6"></path><path d="m9 9 6 6"></path></svg>
+            </button>
+        </div>
+
+        <!-- Info Panel for Selected Object -->
+        <div id="info-panel" class="absolute top-20 right-4 w-64 p-4 rounded-lg glass-panel z-10 hidden">
+            <h3 id="info-title" class="text-lg font-bold border-b border-gray-600 pb-2 mb-2">Selection Details</h3>
+            <div id="info-content" class="text-sm space-y-2"></div>
+        </div>
+        
+        <!-- Notification Area -->
+        <div id="notification-area" class="absolute top-20 left-4 w-72 space-y-2 z-20"></div>
+
+        <!-- Contract Panel -->
+        <div id="contract-panel" class="absolute top-1/2 -translate-y-1/2 left-4 w-72 p-4 rounded-lg glass-panel z-10 hidden">
+            <h3 class="text-lg font-bold border-b border-gray-600 pb-2 mb-2">Active Contract</h3>
+            <div id="contract-content" class="text-sm space-y-2"></div>
+        </div>
+
+        <!-- Modals -->
+        <div id="modal-overlay" class="fixed inset-0 bg-black/70 flex items-center justify-center z-30 hidden">
+            <div id="modal" class="bg-gray-800 p-8 rounded-xl shadow-2xl max-w-lg w-full transform transition-all scale-95 opacity-0">
+                <h2 id="modal-title" class="text-2xl font-bold mb-4">Game Paused</h2>
+                <div id="modal-content" class="text-gray-300 mb-6"></div>
+                <button id="modal-close" class="w-full py-2 bg-blue-500 hover:bg-blue-600 text-white font-bold rounded-lg shadow-md transition-colors">Close</button>
+            </div>
+        </div>
+        
+        <div id="research-modal-overlay" class="fixed inset-0 bg-black/70 flex items-center justify-center z-30 hidden">
+            <div id="research-modal" class="bg-gray-800 p-8 rounded-xl shadow-2xl max-w-3xl w-full transform transition-all scale-95 opacity-0">
+                <div class="flex justify-between items-center mb-4">
+                    <h2 id="research-modal-title" class="text-2xl font-bold">Research & Development</h2>
+                    <div class="stat-card bg-gray-900/50 p-2 rounded-lg shadow-lg flex items-center space-x-2">
+                        <span class="text-purple-400">🔬</span>
+                        <div>
+                            <div class="text-xs text-gray-400">Research Points</div>
+                            <div id="research-points" class="font-semibold text-white">0 RP</div>
+                        </div>
+                    </div>
+                </div>
+                <div id="research-modal-content" class="text-gray-300 mb-6 grid grid-cols-3 gap-4">
+                    <!-- Tech items will be injected here by JS -->
+                </div>
+                <button id="research-modal-close" class="w-full py-2 bg-blue-500 hover:bg-blue-600 text-white font-bold rounded-lg shadow-md transition-colors">Close</button>
+            </div>
+        </div>
+        
+        <div id="specialization-modal-overlay" class="fixed inset-0 bg-black/70 flex items-center justify-center z-30 hidden">
+            <div id="specialization-modal" class="bg-gray-800 p-8 rounded-xl shadow-2xl max-w-2xl w-full transform transition-all scale-95 opacity-0">
+                 <h2 id="specialization-modal-title" class="text-2xl font-bold mb-4">District Level Up!</h2>
+                 <p id="specialization-modal-subtitle" class="text-gray-300 mb-6"></p>
+                <div id="specialization-modal-content" class="text-gray-300 mb-6 grid grid-cols-2 gap-4">
+                    <!-- Specialization options injected here -->
+                </div>
+            </div>
+        </div>
+    </div>
+
+<script>
+const canvas = document.getElementById('gameCanvas');
+const ctx = canvas.getContext('2d');
+
+// --- GAME STATE & CONFIGURATION ---
+const TILE_SIZE = 40;
+const ROAD_WIDTH = TILE_SIZE * 0.4;
+const COSTS = { ROAD_PER_SEGMENT: 100, UPGRADE_PER_SEGMENT: 200, DEMOLISH_ROAD_REFUND: 50, REST_STOP: 1000, TOLL_BOOTH: 1500, MAINTENANCE_DEPOT: 2500, BUS_DEPOT: 5000, RESEARCH_CENTER: 7500, PARK: 1000, WAREHOUSE: 4000 };
+const INCOME = { CAR_COMMERCIAL: 25, CAR_INDUSTRIAL: 20, TRUCK_DELIVERY_BASE: 75, WAREHOUSE_BONUS_MULT: 0.25, TOURIST_TRIP: 30, REST_STOP_VISIT: 100, TOLL: 8 };
+const ROAD_CAPACITY_PER_LANE = 4;
+const XP_PER_TRIP = 1;
+const XP_FOR_LEVEL_UP = (level) => 100 * level * level;
+const REROUTE_CHECK_INTERVAL = 10; // Increased interval
+const LONGER_PATH_THRESHOLD = 5; // Allow paths up to 5 tiles longer
+const LONGER_PATH_CHANCE = 0.20; // 20% chance to pick a slightly longer path
+const VEHICLE_DESPAWN_TIME = 20; // Seconds of being idle on district road before despawning
+const VEHICLE_HIGHWAY_DESPAWN_TIME = 60; // Seconds of being idle on highway before despawning
+
+
+let gameState = {
+    money: 50000, efficiency: 100, paused: false, gameOver: false, activeTool: 'select',
+    grid: {}, districts: [], serviceBuildings: {}, maintenanceDepots: {}, tollBooths: {}, busDepots: {}, researchCenters: {}, parks: {}, warehouses: {}, vehicles: [], roadNodes: {},
+    gameTime: 0, lastVehicleSpawn: 0,
+    // Track unique facilities globally
+    hasAirport: false, hasUniversity: false, hasStadium: false, hasFactoryComplex: false,
+    nextDistrictSpawnTime: 180,
+    isRushHour: false, nextRushHourTime: 240, rushHourDuration: 60,
+    isStadiumEvent: false, nextStadiumEventTime: 300 + Math.random() * 120, stadiumEventDuration: 45, stadiumEventPayoff: 50000, stadiumEventDistrictId: null, // Stadium event state
+    accidents: {}, nextAccidentTime: 300, accidentDuration: 45,
+    activeContract: null, nextContractTime: 60,
+    batchedIncome: 0, lastIncomeNotificationTime: 0,
+    researchPoints: 0,
+    techTree: {
+        'advanced_roadworks': { name: 'Advanced Roadworks', cost: 75, unlocked: false, requires: [], description: 'Unlocks the ability to upgrade highways to 3 or 4 lanes.' },
+        'service_areas': { name: 'Service Areas', cost: 80, unlocked: false, requires: [], description: 'Unlock Rest Stops to generate extra income.' },
+        'toll_booths': { name: 'Toll Booths', cost: 100, unlocked: false, requires: [], description: 'Unlock Toll Booths for direct income from traffic.' },
+        'logistics_hub': { name: 'Logistics Hub', cost: 150, unlocked: false, requires: ['toll_booths'], description: 'Unlocks Warehouses to boost truck income.'},
+        'civic_planning': { name: 'Civic Planning', cost: 180, unlocked: false, requires: ['service_areas'], description: 'Allows building Parks in districts to boost income.' },
+        'upgrade_4_lanes': { name: '4-Lane Superhighways', cost: 250, unlocked: false, requires: ['advanced_roadworks'], description: 'Instantly upgrades all existing highways to 4 lanes.' },
+        'contracts': { name: 'Advanced Logistics', cost: 120, unlocked: false, requires: ['service_areas'], description: 'Unlocks lucrative timed contracts.' },
+        'research_center': { name: 'Research Centers', cost: 250, unlocked: false, requires: ['contracts'], description: 'Build centers to actively generate Research Points.'},
+        'maintenance': { name: 'Maintenance Depots', cost: 200, unlocked: false, requires: ['upgrade_4_lanes'], description: 'Improves efficiency and reduces accident duration.' },
+        // 'smart_routing' removed
+        'public_transit': { name: 'Public Transit', cost: 400, unlocked: false, requires: ['maintenance', 'contracts'], description: 'Unlock Bus Depots to reduce overall traffic.'} // Adjusted prerequisites
+    }
+};
+
+// Camera/Viewport state
+let camera = { x: 0, y: 0, zoom: 1 };
+let mouse = { x: 0, y: 0, gridX: 0, gridY: 0, down: false, dragging: false, startDrag: { x: 0, y: 0 }, buildPath: [] };
+
+// --- UI ELEMENT REFERENCES ---
+const moneyEl = document.getElementById('money'), efficiencyEl = document.getElementById('efficiency'), vehicleCountEl = document.getElementById('vehicle-count');
+const infoPanelEl = document.getElementById('info-panel'), infoTitleEl = document.getElementById('info-title'), infoContentEl = document.getElementById('info-content');
+const modalOverlayEl = document.getElementById('modal-overlay'), modalEl = document.getElementById('modal'), modalTitleEl = document.getElementById('modal-title'), modalContentEl = document.getElementById('modal-content');
+const researchModalOverlayEl = document.getElementById('research-modal-overlay'), researchModalContentEl = document.getElementById('research-modal-content'), researchPointsEl = document.getElementById('research-points');
+const specializationModalOverlayEl = document.getElementById('specialization-modal-overlay');
+const contractPanelEl = document.getElementById('contract-panel'), contractContentEl = document.getElementById('contract-content');
+
+// --- CORE GAME LOGIC ---
+function init() {
+    resizeCanvas();
+    window.addEventListener('resize', resizeCanvas);
+    canvas.addEventListener('mousedown', onMouseDown);
+    canvas.addEventListener('mouseup', onMouseUp);
+    canvas.addEventListener('mousemove', onMouseMove);
+    canvas.addEventListener('wheel', onWheel);
+    document.getElementById('toolbar').addEventListener('click', onToolSelect);
+    document.getElementById('pause-button').addEventListener('click', togglePause);
+    document.getElementById('help-button').addEventListener('click', showHelp);
+    document.getElementById('research-button').addEventListener('click', openResearchPanel);
+    document.getElementById('modal-close').addEventListener('click', () => hideModal(modalOverlayEl));
+    document.getElementById('research-modal-close').addEventListener('click', () => hideModal(researchModalOverlayEl));
+    document.addEventListener('keydown', onKeyDown);
+    createInitialCity();
+    updateUI();
+    requestAnimationFrame(gameLoop);
+}
+
+function gameLoop(timestamp) {
+    if (!gameState.paused && !gameState.gameOver) {
+        const deltaTime = (timestamp - (gameState.lastTimestamp || timestamp)) / 1000;
+        gameState.lastTimestamp = timestamp;
+        gameState.gameTime += deltaTime;
+        update(deltaTime);
+    } else { gameState.lastTimestamp = timestamp; }
+    draw();
+    requestAnimationFrame(gameLoop);
+}
+
+function update(deltaTime) {
+    let researchPointRate = 5;
+    researchPointRate += Object.keys(gameState.researchCenters).length * 2;
+    const universityDistrict = gameState.districts.find(d => d.facility === 'university');
+    if(universityDistrict) researchPointRate += 10; // Flat bonus from university
+
+    gameState.researchPoints += deltaTime * researchPointRate;
+    handleTimedEvents(deltaTime);
+    spawnVehicles();
+    updateVehicles(deltaTime);
+    updateGameStats();
+    handleBatchedNotifications();
+    checkDistrictLevelUps();
+}
+
+function draw() {
+    ctx.clearRect(0, 0, canvas.width, canvas.height);
+    ctx.save();
+    ctx.translate(canvas.width / 2, canvas.height / 2);
+    ctx.scale(camera.zoom, camera.zoom);
+    ctx.translate(-camera.x, -camera.y);
+    drawGrid();
+    drawDistricts();
+    drawAirportFacilities(); // Draw airports on top of district fill, but under roads
+    drawParks();
+    drawRoads();
+    drawTollBooths();
+    drawServiceBuildings();
+    drawMaintenanceDepots();
+    drawBusDepots();
+    drawResearchCenters();
+    drawWarehouses();
+    drawAccidents();
+    drawVehicles();
+    drawToolPreview();
+    ctx.restore();
+}
+
+function createInitialCity() {
+    generateDistrict(-40, -15, 25, 25, 'residential');
+    generateDistrict(15, -15, 25, 25, 'commercial', 'university'); // Force a university on start
+    gameState.hasUniversity = true; // Make sure global flag is set
+    generateDistrict(-15, 20, 25, 25, 'industrial');
+    showNotification('Goal', 'Connect districts by building a highway to their border roads.', 'info');
+}
+
+// --- DISTRICT & CONNECTION MECHANICS ---
+function generateDistrict(x, y, width, height, type, forceFacilityType = null) {
+    
+    let facilityType = forceFacilityType;
+    let airportSide = 0; 
+    let airportOffset = 0;
+
+    if (!facilityType) { // Only roll for random if no facility is forced
+        const facilityChance = Math.random();
+        // 11% total chance for a facility
+        if (facilityChance < 0.05 && !gameState.hasAirport && (type === 'commercial' || type === 'industrial')) { facilityType = 'airport'; }
+        else if (facilityChance < 0.07 && !gameState.hasUniversity && (type === 'residential' || type === 'commercial')) { facilityType = 'university'; }
+        else if (facilityChance < 0.09 && !gameState.hasStadium && type === 'commercial') { facilityType = 'stadium'; }
+        else if (facilityChance < 0.11 && !gameState.hasFactoryComplex && type === 'industrial') { facilityType = 'factory'; }
+    }
+
+    // Set global flags if this facility is being added (forced or random)
+    if (facilityType === 'airport') { gameState.hasAirport = true; airportSide = Math.floor(Math.random() * 4); airportOffset = Math.floor(Math.random() * (width - 6)); }
+    if (facilityType === 'university') { gameState.hasUniversity = true; }
+    if (facilityType === 'stadium') { gameState.hasStadium = true; }
+    if (facilityType === 'factory') { gameState.hasFactoryComplex = true; }
+
+    
+    // Airport facility dimensions and position adjustment
+    let airportRunway = null;
+    if (facilityType === 'airport') {
+         // Adjust district spawn position slightly to make room for runway
+         const runwayWidth = 6;
+         const runwayHeight = 2;
+         airportOffset = Math.floor(Math.random() * (width - runwayWidth)); // Recalculate offset for horizontal
+         
+        if (airportSide === 0) { // Top
+             y += runwayHeight; 
+             airportRunway = { x: x + airportOffset, y: y - runwayHeight, width: runwayWidth, height: runwayHeight};
+        } else if (airportSide === 1) { // Right
+             x -= runwayHeight; // Use height for side runways
+             airportOffset = Math.floor(Math.random() * (height - runwayWidth)); // Recalculate for vertical
+             airportRunway = { x: x + width, y: y + airportOffset, width: runwayHeight, height: runwayWidth}; // Swap w/h
+        } else if (airportSide === 2) { // Bottom
+             y -= runwayHeight;
+             airportRunway = { x: x + airportOffset, y: y + height, width: runwayWidth, height: runwayHeight};
+        } else { // Left
+             x += runwayHeight; // Use height for side runways
+             airportOffset = Math.floor(Math.random() * (height - runwayWidth)); // Recalculate for vertical
+             airportRunway = { x: x - runwayHeight, y: y + airportOffset, width: runwayHeight, height: runwayWidth}; // Swap w/h
+        }
+    }
+
+
+    const district = { 
+        x, y, width, height, type, id: `${type}-${Date.now()}`, 
+        xp: 0, level: 1, specialization: null, happiness: 0, 
+        facility: facilityType, // Store facility type
+        airportRunway, // Store runway position if it exists
+        grid: {}, internalRoadKeys: [], connectionCandidates: [], airportConnections: [] 
+    };
+
+    
+    const addRoad = (gx, gy) => {
+        const key = `${gx},${gy}`;
+        if (!district.grid[key]) {
+            district.grid[key] = { type: 'road', lanes: 2, capacity: 2 * ROAD_CAPACITY_PER_LANE, vehicleCount: 0 };
+            district.internalRoadKeys.push(key);
+        }
+    };
+
+    // --- Generate internal road grid (Denser) ---
+    const hDivisions = 4 + Math.floor(Math.random() * 3); // Increased density
+    const vDivisions = 4 + Math.floor(Math.random() * 3); // Increased density
+    for (let i = 1; i < hDivisions; i++) {
+        const divY = y + Math.round(i * (height / hDivisions));
+        for (let j = 0; j < width; j++) { addRoad(x + j, divY); }
+    }
+    for (let i = 1; i < vDivisions; i++) {
+        const divX = x + Math.round(i * (width / vDivisions));
+        for (let j = 0; j < height; j++) { addRoad(divX, y + j); }
+    }
+    for (let i = 0; i < width; i++) { addRoad(x + i, y); addRoad(x + i, y + height - 1); }
+    for (let i = 0; i < height; i++) { addRoad(x, y + i); addRoad(x + width - 1, y + i); }
+    
+    // --- Identify connection candidates (border roads) ---
+    for(const key in district.grid) {
+        const [gx, gy] = key.split(',').map(Number);
+        if (gx === x || gx === x + width - 1 || gy === y || gy === y + height - 1) { 
+            district.grid[key].isOutskirt = true; 
+            district.connectionCandidates.push(key); 
+        }
+    }
+
+    // --- If it has an airport facility, designate specific border roads ---
+    if (district.facility === 'airport' && airportRunway) {
+        // Add runway tiles as non-road pathable nodes
+         for(let i=0; i < airportRunway.width; i++) {
+             for(let j=0; j < airportRunway.height; j++) {
+                 const key = `${airportRunway.x + i},${airportRunway.y + j}`;
+                 district.grid[key] = { type: 'airport_connection', lanes: 4, capacity: 100, vehicleCount: 0 };
+                 // Airport tiles themselves aren't internal roads or connection candidates
+             }
+         }
+
+        // Find border roads adjacent to the runway area and mark them
+         for (const key of district.connectionCandidates) {
+             const [gx, gy] = key.split(',').map(Number);
+             if (airportSide === 0 && gy === y && gx >= airportRunway.x && gx < airportRunway.x + airportRunway.width) { // Top edge
+                 district.grid[key].isAirportConnection = true;
+                 district.airportConnections.push(key);
+             } else if (airportSide === 1 && gx === x + width - 1 && gy >= airportRunway.y && gy < airportRunway.y + airportRunway.height) { // Right edge
+                 district.grid[key].isAirportConnection = true;
+                 district.airportConnections.push(key);
+             } else if (airportSide === 2 && gy === y + height - 1 && gx >= airportRunway.x && gx < airportRunway.x + airportRunway.width) { // Bottom edge
+                 district.grid[key].isAirportConnection = true;
+                 district.airportConnections.push(key);
+             } else if (airportSide === 3 && gx === x && gy >= airportRunway.y && gy < airportRunway.y + airportRunway.height) { // Left edge
+                 district.grid[key].isAirportConnection = true;
+                 district.airportConnections.push(key);
+             }
+         }
+    }
+     // Apply unhappiness from nearby factory complexes immediately
+    if (type === 'residential') {
+        const resCenter = { x: x + width / 2, y: y + height / 2 };
+        gameState.districts.forEach(d => {
+            if (d.facility === 'factory') {
+                const facCenter = { x: d.x + d.width / 2, y: d.y + d.height / 2 };
+                const dist = Math.hypot(resCenter.x - facCenter.x, resCenter.y - facCenter.y);
+                 if (dist < 80) { // Radius check (in grid units)
+                    district.happiness -= 0.15; // Apply penalty
+                 }
+            }
+        });
+    }
+
+
+    gameState.districts.push(district);
+    rebuildRoadGraph();
+    
+    // Apply initial negative happiness to nearby residential if this is a factory
+    if (facilityType === 'factory') {
+        applyFactoryUnhappiness(district);
+    }
+     // Apply global happiness bonus if this is the airport
+     if (facilityType === 'airport') {
+         applyAirportHappinessBonus();
+     }
+}
+
+
+function spawnNewDistrict() {
+    const districtSize = 25, padding = 15;
+    let minX = 0, minY = 0, maxX = 0, maxY = 0;
+    gameState.districts.forEach(d => { 
+         minX = Math.min(minX, d.x - (d.airportRunway && d.airportRunway.width > d.height ? d.airportRunway.width : 0) ); 
+         minY = Math.min(minY, d.y - (d.airportRunway && d.airportRunway.height > d.width ? d.airportRunway.height : 0) ); 
+         maxX = Math.max(maxX, d.x + d.width + (d.airportRunway && d.airportRunway.width > d.height ? d.airportRunway.width : 0) ); 
+         maxY = Math.max(maxY, d.y + d.height + (d.airportRunway && d.airportRunway.height > d.width ? d.airportRunway.height : 0) ); 
+    });
+    
+    let newX, newY;
+    const side = Math.floor(Math.random() * 4);
+    if (side === 0) { newX = minX + Math.random() * (maxX - minX); newY = minY - districtSize - padding; } // Top
+    else if (side === 1) { newX = maxX + padding; newY = minY + Math.random() * (maxY - minY); } // Right
+    else if (side === 2) { newX = minX + Math.random() * (maxX - minX); newY = maxY + padding; } // Bottom
+    else { newX = minX - districtSize - padding; newY = minY + Math.random() * (maxY - minY); } // Left
+    
+    const type = ['residential', 'commercial', 'industrial'][Math.floor(Math.random() * 3)];
+    generateDistrict(Math.round(newX), Math.round(newY), districtSize, districtSize, type);
+    showNotification("New District!", "A new district has been established. Connect it!", "info");
+}
+
+function applyFactoryUnhappiness(factoryDistrict) {
+     const facCenter = { x: factoryDistrict.x + factoryDistrict.width / 2, y: factoryDistrict.y + factoryDistrict.height / 2 };
+     gameState.districts.forEach(d => {
+         if (d.type === 'residential') {
+             const resCenter = { x: d.x + d.width / 2, y: d.y + d.height / 2 };
+             const dist = Math.hypot(facCenter.x - resCenter.x, resCenter.y - resCenter.y); // Distance in grid units
+             if (dist < 80) { // Radius check (e.g., 80 grid units)
+                 d.happiness -= 0.15; // Significant penalty
+                 showNotification('Pollution!', `The new factory complex is impacting nearby residential happiness.`, 'error');
+             }
+         }
+     });
+}
+
+function applyAirportHappinessBonus() {
+     gameState.districts.forEach(d => {
+         d.happiness += 0.05; // Small global bonus
+     });
+      showNotification('Economic Boost!', `The new airport is slightly increasing happiness everywhere.`, 'success');
+}
+
+
+// --- RENDERING FUNCTIONS ---
+function drawGrid() {
+    ctx.strokeStyle = '#4a5568'; ctx.lineWidth = 0.5;
+    const { startX, endX, startY, endY } = getVisibleGridBounds();
+    for (let x = startX; x <= endX; x += TILE_SIZE) { ctx.beginPath(); ctx.moveTo(x, startY); ctx.lineTo(x, endY); ctx.stroke(); }
+    for (let y = startY; y <= endY; y += TILE_SIZE) { ctx.beginPath(); ctx.moveTo(startX, y); ctx.lineTo(endX, y); ctx.stroke(); }
+}
+
+function drawDistricts() {
+    const districtColors = { residential: 'rgba(34, 197, 94, 0.3)', commercial: 'rgba(59, 130, 246, 0.3)', industrial: 'rgba(245, 158, 11, 0.3)' };
+    gameState.districts.forEach(d => {
+        if (d.type === 'airport') return; // Skip airport-only districts if they somehow exist
+
+        ctx.fillStyle = districtColors[d.type] || 'rgba(100,100,100,0.3)'; // Fallback color
+        ctx.fillRect(d.x * TILE_SIZE, d.y * TILE_SIZE, d.width * TILE_SIZE, d.height * TILE_SIZE);
+        
+        drawSmoothRoadNetwork(d.grid, '#a0aec0', ROAD_WIDTH);
+        
+        // Draw Facility Visuals (Non-Airport)
+        let facilityIcon = null;
+        switch(d.facility) {
+             // case 'airport': // Handled separately
+             case 'university': facilityIcon = "🎓"; break;
+             case 'stadium': facilityIcon = "🏟️"; break;
+             case 'factory': facilityIcon = "🏭"; break;
+        }
+
+        if (facilityIcon && camera.zoom > 0.5) {
+             // Draw icon in a corner (e.g., top-left)
+             const iconX = d.x * TILE_SIZE + TILE_SIZE * 1.5;
+             const iconY = d.y * TILE_SIZE + TILE_SIZE * 1.5;
+             ctx.font = `bold ${TILE_SIZE * 2}px Inter`; 
+             ctx.textAlign = 'center'; 
+             ctx.textBaseline = 'middle';
+             // Add a background for better visibility
+             ctx.fillStyle = 'rgba(0,0,0,0.4)';
+             ctx.fillRect(iconX - TILE_SIZE * 1.5, iconY - TILE_SIZE * 1.5, TILE_SIZE*3, TILE_SIZE*3);
+             ctx.fillStyle = 'white'; // Icon color
+             ctx.fillText(facilityIcon, iconX, iconY);
+        }
+
+        // Highlight all connection candidates
+        d.connectionCandidates.forEach(key => {
+             const [gx, gy] = key.split(',').map(Number);
+             const tile = d.grid[key];
+             ctx.fillStyle = tile?.isAirportConnection ? 'rgba(168, 85, 247, 0.6)' : 'rgba(253, 224, 71, 0.6)'; // Purple for airport, Yellow for normal
+             ctx.fillRect(gx * TILE_SIZE, gy * TILE_SIZE, TILE_SIZE, TILE_SIZE);
+         });
+    });
+}
+
+function drawAirportFacilities() {
+     const airportDistrict = gameState.districts.find(d => d.facility === 'airport');
+     if (airportDistrict && airportDistrict.airportRunway) {
+         const r = airportDistrict.airportRunway;
+         const runwayX = r.x * TILE_SIZE;
+         const runwayY = r.y * TILE_SIZE;
+         const runwayW = r.width * TILE_SIZE;
+         const runwayH = r.height * TILE_SIZE;
+
+         // Runway
+         ctx.fillStyle = '#4a5568';
+         ctx.fillRect(runwayX, runwayY, runwayW, runwayH);
+         
+         ctx.strokeStyle = 'white'; 
+         ctx.lineWidth = 2;
+         ctx.setLineDash([15, 10]);
+         ctx.beginPath();
+         if (r.width > r.height) { // Horizontal runway
+             ctx.moveTo(runwayX + TILE_SIZE, runwayY + runwayH / 2);
+             ctx.lineTo(runwayX + runwayW - TILE_SIZE, runwayY + runwayH / 2);
+         } else { // Vertical runway
+             ctx.moveTo(runwayX + runwayW / 2, runwayY + TILE_SIZE);
+             ctx.lineTo(runwayX + runwayW / 2, runwayY + runwayH - TILE_SIZE);
+         }
+         ctx.stroke();
+         ctx.setLineDash([]);
+         
+          // Simple Terminal graphic next to the district
+         ctx.fillStyle = 'rgba(156, 163, 175, 0.8)';
+          if (r.height === 2) { // Top/Bottom runway
+             const terminalY = (r.y < airportDistrict.y) ? (r.y + r.height) * TILE_SIZE : (r.y - 2) * TILE_SIZE;
+             ctx.fillRect(runwayX, terminalY, runwayW, TILE_SIZE * 2);
+             if(camera.zoom > 0.6) { ctx.fillStyle = 'white'; ctx.font = `bold ${TILE_SIZE}px Inter`; ctx.textAlign = 'center'; ctx.textBaseline = 'middle'; ctx.fillText("✈️", runwayX + runwayW / 2, terminalY + TILE_SIZE); }
+          } else { // Left/Right runway
+               const terminalX = (r.x < airportDistrict.x) ? (r.x + r.width) * TILE_SIZE : (r.x - 2) * TILE_SIZE;
+               ctx.fillRect(terminalX, runwayY, TILE_SIZE * 2, runwayH);
+                if(camera.zoom > 0.6) { ctx.fillStyle = 'white'; ctx.font = `bold ${TILE_SIZE}px Inter`; ctx.textAlign = 'center'; ctx.textBaseline = 'middle'; ctx.fillText("✈️", terminalX + TILE_SIZE, runwayY + runwayH / 2); }
+          }
+     }
+}
+
+
+function drawParks() {
+    for (const key in gameState.parks) {
+        const [x, y] = key.split(',').map(Number);
+        ctx.fillStyle = 'rgba(22, 163, 74, 0.7)';
+        ctx.fillRect(x * TILE_SIZE, y * TILE_SIZE, TILE_SIZE, TILE_SIZE);
+         if (camera.zoom > 0.8) { ctx.fillStyle = 'white'; ctx.font = `bold ${TILE_SIZE * 0.6}px Inter`; ctx.textAlign = 'center'; ctx.textBaseline = 'middle'; ctx.fillText("🌳", x * TILE_SIZE + TILE_SIZE / 2, y * TILE_SIZE + TILE_SIZE / 2); }
+    }
+}
+
+function drawRoads() { 
+    drawSmoothRoadNetwork(gameState.grid, '#718096', ROAD_WIDTH); 
+
+    // Draw connectors/ramps
+    for (const key in gameState.grid) {
+        const [x, y] = key.split(',').map(Number);
+        const road = gameState.grid[key];
+        const width = ROAD_WIDTH + (road.lanes - 1) * (ROAD_WIDTH * 0.5);
+        
+        getAllNeighbors(x, y).forEach(nKey => { // Check cardinal AND diagonal
+            const neighborDistrictRoad = getDistrictRoad(nKey); // This function now correctly finds roads in districts with facilities
+            if (neighborDistrictRoad && !gameState.grid[nKey]) {
+                const [nx, ny] = nKey.split(',').map(Number);
+                
+                ctx.strokeStyle = '#a0aec0'; // District road color for ramp
+                ctx.lineWidth = width * 0.9; 
+                ctx.beginPath();
+                ctx.moveTo(x * TILE_SIZE + TILE_SIZE / 2, y * TILE_SIZE + TILE_SIZE / 2);
+                 // Use quadratic curve for a smoother ramp look
+                ctx.quadraticCurveTo(
+                    (x * TILE_SIZE + TILE_SIZE / 2 + nx * TILE_SIZE + TILE_SIZE / 2) / 2, 
+                    (y * TILE_SIZE + TILE_SIZE / 2 + ny * TILE_SIZE + TILE_SIZE / 2) / 2, 
+                    nx * TILE_SIZE + TILE_SIZE / 2, 
+                    ny * TILE_SIZE + TILE_SIZE / 2
+                );
+                ctx.stroke();
+            }
+        });
+    }
+}
+
+
+function drawTollBooths() {
+    for(const key in gameState.tollBooths) {
+        const [x,y] = key.split(',').map(Number);
+        ctx.fillStyle = 'rgba(192, 132, 252, 0.8)';
+        ctx.fillRect(x * TILE_SIZE + TILE_SIZE * 0.1, y * TILE_SIZE + TILE_SIZE * 0.1, TILE_SIZE * 0.8, TILE_SIZE * 0.8);
+    }
+}
+
+function drawServiceBuildings() {
+    for(const key in gameState.serviceBuildings) {
+        const [x,y] = key.split(',').map(Number);
+        ctx.fillStyle = 'rgba(124, 58, 237, 0.7)'; ctx.strokeStyle = 'rgba(124, 58, 237, 1)'; ctx.lineWidth = 2;
+        ctx.fillRect(x * TILE_SIZE, y * TILE_SIZE, TILE_SIZE, TILE_SIZE);
+        ctx.strokeRect(x * TILE_SIZE, y * TILE_SIZE, TILE_SIZE, TILE_SIZE);
+        if (camera.zoom > 0.8) { ctx.fillStyle = 'white'; ctx.font = `bold ${TILE_SIZE * 0.6}px Inter`; ctx.textAlign = 'center'; ctx.textBaseline = 'middle'; ctx.fillText("☕", x * TILE_SIZE + TILE_SIZE/2, y * TILE_SIZE + TILE_SIZE/2); }
+    }
+}
+function drawWarehouses() {
+    for (const key in gameState.warehouses) {
+        const [x, y] = key.split(',').map(Number);
+        ctx.fillStyle = 'rgba(217, 119, 6, 0.7)'; ctx.strokeStyle = 'rgba(217, 119, 6, 1)'; ctx.lineWidth = 2;
+        ctx.fillRect(x * TILE_SIZE, y * TILE_SIZE, TILE_SIZE, TILE_SIZE);
+        ctx.strokeRect(x * TILE_SIZE, y * TILE_SIZE, TILE_SIZE, TILE_SIZE);
+        if (camera.zoom > 0.8) { ctx.fillStyle = 'white'; ctx.font = `bold ${TILE_SIZE * 0.6}px Inter`; ctx.textAlign = 'center'; ctx.textBaseline = 'middle'; ctx.fillText("📦", x * TILE_SIZE + TILE_SIZE / 2, y * TILE_SIZE + TILE_SIZE / 2); }
+    }
+}
+
+function drawMaintenanceDepots() {
+    for (const key in gameState.maintenanceDepots) {
+        const [x, y] = key.split(',').map(Number);
+        ctx.fillStyle = 'rgba(236, 201, 75, 0.7)'; ctx.strokeStyle = 'rgba(236, 201, 75, 1)'; ctx.lineWidth = 2;
+        ctx.fillRect(x * TILE_SIZE, y * TILE_SIZE, TILE_SIZE, TILE_SIZE);
+        ctx.strokeRect(x * TILE_SIZE, y * TILE_SIZE, TILE_SIZE, TILE_SIZE);
+        if (camera.zoom > 0.8) { ctx.fillStyle = 'white'; ctx.font = `bold ${TILE_SIZE * 0.6}px Inter`; ctx.textAlign = 'center'; ctx.textBaseline = 'middle'; ctx.fillText("🔧", x * TILE_SIZE + TILE_SIZE / 2, y * TILE_SIZE + TILE_SIZE / 2); }
+    }
+}
+function drawBusDepots() {
+    for (const key in gameState.busDepots) {
+        const [x, y] = key.split(',').map(Number);
+        ctx.fillStyle = 'rgba(37, 99, 235, 0.7)'; ctx.strokeStyle = 'rgba(37, 99, 235, 1)'; ctx.lineWidth = 2;
+        ctx.fillRect(x * TILE_SIZE, y * TILE_SIZE, TILE_SIZE, TILE_SIZE);
+        ctx.strokeRect(x * TILE_SIZE, y * TILE_SIZE, TILE_SIZE, TILE_SIZE);
+        if (camera.zoom > 0.8) { ctx.fillStyle = 'white'; ctx.font = `bold ${TILE_SIZE * 0.6}px Inter`; ctx.textAlign = 'center'; ctx.textBaseline = 'middle'; ctx.fillText("🚌", x * TILE_SIZE + TILE_SIZE / 2, y * TILE_SIZE + TILE_SIZE / 2); }
+    }
+}
+function drawResearchCenters() {
+    for (const key in gameState.researchCenters) {
+        const [x, y] = key.split(',').map(Number);
+        ctx.fillStyle = 'rgba(209, 213, 219, 0.7)'; ctx.strokeStyle = 'rgba(209, 213, 219, 1)'; ctx.lineWidth = 2;
+        ctx.fillRect(x * TILE_SIZE, y * TILE_SIZE, TILE_SIZE, TILE_SIZE);
+        ctx.strokeRect(x * TILE_SIZE, y * TILE_SIZE, TILE_SIZE, TILE_SIZE);
+        if (camera.zoom > 0.8) { ctx.fillStyle = 'black'; ctx.font = `bold ${TILE_SIZE * 0.6}px Inter`; ctx.textAlign = 'center'; ctx.textBaseline = 'middle'; ctx.fillText("🔬", x * TILE_SIZE + TILE_SIZE / 2, y * TILE_SIZE + TILE_SIZE / 2); }
+    }
+}
+
+
+function drawAccidents() {
+    ctx.font = `bold ${TILE_SIZE}px Inter`; ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+    for (const key in gameState.accidents) {
+        const [x, y] = key.split(',').map(Number);
+        ctx.fillText("❌", x * TILE_SIZE + TILE_SIZE/2, y * TILE_SIZE + TILE_SIZE/2);
+    }
+}
+
+function drawSmoothRoadNetwork(grid, color, baseWidth) {
+    ctx.lineCap = 'round'; // Use round line caps for smoother joins
+    for (const key in grid) {
+        const tile = grid[key];
+        if (!tile || tile.type === 'airport_connection') continue; // Skip rendering airport connections as roads
+
+        const [x, y] = key.split(',').map(Number);
+        const width = baseWidth + (tile.lanes - 1) * (baseWidth * 0.5);
+        ctx.strokeStyle = color;
+        ctx.lineWidth = width;
+
+        const center = { x: x * TILE_SIZE + TILE_SIZE / 2, y: y * TILE_SIZE + TILE_SIZE / 2 };
+        
+        getAllNeighbors(x, y).forEach(nKey => {
+             if (grid[nKey] && grid[nKey].type !== 'airport_connection') {
+                const [nx, ny] = nKey.split(',').map(Number);
+                // Only draw connection if the neighbor is 'behind' in iteration order to avoid double drawing
+                 if (nx > x || (nx === x && ny > y) || (nx > x && ny < y) || (nx < x && ny > y)) {
+                     const neighborCenter = { x: nx * TILE_SIZE + TILE_SIZE / 2, y: ny * TILE_SIZE + TILE_SIZE / 2 };
+                     ctx.beginPath();
+                     ctx.moveTo(center.x, center.y);
+                     ctx.lineTo(neighborCenter.x, neighborCenter.y);
+                     ctx.stroke();
+                }
+             }
+        });
+    }
+     ctx.lineCap = 'butt'; // Reset line cap
+}
+
+
+function drawVehicles() {
+    gameState.vehicles.forEach(v => {
+        let drawX = v.x, drawY = v.y;
+        const road = getRoadTile(v.currentSegmentKey);
+        if (road && road.lanes >= 2 && v.pathIndex < v.path.length - 1) {
+            const nextNodeKey = v.path[v.pathIndex + 1];
+             if (!nextNodeKey) return; // Path might end abruptly
+            const [currentX, currentY] = v.currentSegmentKey.split(',').map(Number);
+            const [nextX, nextY] = nextNodeKey.split(',').map(Number);
+            const dx = nextX - currentX, dy = nextY - currentY;
+            
+            let lanesPerDirection;
+            if (road.lanes === 3) {
+                lanesPerDirection = (dx > 0 || dy > 0 || (dx === 0 && dy === 0 && Math.random() > 0.5)) ? 2 : 1; // Default bias for straight
+            } else {
+                lanesPerDirection = Math.max(1, Math.floor(road.lanes / 2));
+            }
+
+            const laneInDirection = v.lane % lanesPerDirection;
+            let effectiveLane = (dx < 0 || dy < 0) ? lanesPerDirection + laneInDirection : laneInDirection; // Crude right-hand traffic
+            
+            const totalRoadWidth = ROAD_WIDTH + (road.lanes - 1) * (ROAD_WIDTH * 0.5);
+            const offsetDistance = (effectiveLane - (road.lanes - 1) / 2) * (totalRoadWidth / road.lanes) * 0.8;
+            const targetX = nextX * TILE_SIZE + TILE_SIZE / 2, targetY = nextY * TILE_SIZE + TILE_SIZE / 2;
+            let moveDx = targetX - v.x, moveDy = targetY - v.y;
+            const len = Math.sqrt(moveDx * moveDx + moveDy * moveDy);
+            if (len > 0) {
+                const perpX = -moveDy / len, perpY = moveDx / len;
+                drawX += perpX * offsetDistance; drawY += perpY * offsetDistance;
+            }
+        }
+        ctx.fillStyle = v.color;
+        
+        if (v.type === 'truck') ctx.fillRect(drawX - 5, drawY - 3, 10, 6);
+        else if (v.type === 'bus') ctx.fillRect(drawX - 7, drawY - 4, 14, 8);
+        else if (v.type === 'tourist') ctx.fillRect(drawX - 4, drawY - 2, 8, 4); // Smaller car for tourists
+        else ctx.fillRect(drawX - 3, drawY - 3, 6, 6);
+    });
+}
+
+function drawToolPreview() {
+    const { gridX, gridY } = mouse;
+    ctx.strokeStyle = 'rgba(255, 255, 255, 0.7)'; ctx.lineWidth = 2;
+    switch(gameState.activeTool) {
+        case 'road':
+            if (mouse.buildPath.length > 0) {
+                ctx.beginPath();
+                 ctx.lineWidth = ROAD_WIDTH * 2; // Preview width matches 2 lanes
+                 ctx.strokeStyle = 'rgba(113, 128, 150, 0.7)'; // Highway color preview
+                 ctx.lineCap = 'round';
+                const start = mouse.buildPath[0];
+                ctx.moveTo(start.x * TILE_SIZE + TILE_SIZE / 2, start.y * TILE_SIZE + TILE_SIZE / 2);
+                for (let i = 1; i < mouse.buildPath.length; i++) {
+                    const point = mouse.buildPath[i];
+                    ctx.lineTo(point.x * TILE_SIZE + TILE_SIZE / 2, point.y * TILE_SIZE + TILE_SIZE / 2);
+                }
+                 // Preview line to current mouse position
+                 ctx.lineTo(gridX * TILE_SIZE + TILE_SIZE / 2, gridY * TILE_SIZE + TILE_SIZE / 2);
+                ctx.stroke();
+                 ctx.lineCap = 'butt'; // Reset
+            } else {
+                 ctx.strokeRect(gridX * TILE_SIZE, gridY * TILE_SIZE, TILE_SIZE, TILE_SIZE);
+            }
+            break;
+        case 'demolish': case 'upgrade': case 'service': case 'toll': case 'maintenance': case 'bus_depot': case 'research_center': case 'park': case 'warehouse':
+             ctx.strokeRect(gridX * TILE_SIZE, gridY * TILE_SIZE, TILE_SIZE, TILE_SIZE); break;
+    }
+}
+
+// --- UPDATE & SIMULATION FUNCTIONS ---
+function handleTimedEvents(deltaTime) {
+    if (gameState.gameTime >= gameState.nextDistrictSpawnTime) { spawnNewDistrict(); gameState.nextDistrictSpawnTime = gameState.gameTime + 180; }
+    if (!gameState.isRushHour && gameState.gameTime >= gameState.nextRushHourTime) { gameState.isRushHour = true; gameState.rushHourEndTime = gameState.gameTime + gameState.rushHourDuration; showNotification("Rush Hour!", "Traffic is increasing significantly!", "error"); }
+    if (gameState.isRushHour && gameState.gameTime >= gameState.rushHourEndTime) { gameState.isRushHour = false; gameState.nextRushHourTime = gameState.gameTime + 240; showNotification("Rush Hour Over", "Traffic is returning to normal.", "info"); }
+
+    // Stadium Event Logic
+    const stadiumDistrict = gameState.districts.find(d => d.facility === 'stadium');
+    if (stadiumDistrict && !gameState.isStadiumEvent && gameState.gameTime >= gameState.nextStadiumEventTime) {
+        gameState.isStadiumEvent = true;
+        gameState.stadiumEventEndTime = gameState.gameTime + gameState.stadiumEventDuration;
+        gameState.stadiumEventDistrictId = stadiumDistrict.id;
+        showNotification("Stadium Event!", "A major event is starting, expect heavy traffic near the stadium!", "warning");
+    }
+    if (gameState.isStadiumEvent && gameState.gameTime >= gameState.stadiumEventEndTime) {
+        gameState.isStadiumEvent = false;
+        gameState.nextStadiumEventTime = gameState.gameTime + 300 + Math.random() * 180; // Schedule next event
+        showNotification("Event Over", `Stadium event concluded! +${formatCurrency(gameState.stadiumEventPayoff)}`, "success");
+        gameState.money += gameState.stadiumEventPayoff;
+        gameState.stadiumEventDistrictId = null;
+    }
+
+
+    let accidentDuration = gameState.techTree['maintenance'].unlocked ? gameState.accidentDuration * 0.7 : gameState.accidentDuration;
+    if (Object.keys(gameState.accidents).length === 0 && gameState.gameTime >= gameState.nextAccidentTime) {
+        const busyRoads = Object.keys(gameState.grid).filter(k => gameState.grid[k].vehicleCount > 2);
+        if (busyRoads.length > 0) {
+            const roadKey = busyRoads[Math.floor(Math.random() * busyRoads.length)];
+            gameState.accidents[roadKey] = { endTime: gameState.gameTime + accidentDuration };
+            rebuildRoadGraph(); showNotification("Accident!", "A road is blocked! Traffic must reroute.", "error");
+        }
+        gameState.nextAccidentTime = gameState.gameTime + 150 + Math.random() * 100;
+    }
+    for (const key in gameState.accidents) { if (gameState.gameTime >= gameState.accidents[key].endTime) { delete gameState.accidents[key]; rebuildRoadGraph(); showNotification("All Clear", "The accident has been cleared.", "success"); } }
+    if (!gameState.activeContract && gameState.techTree['contracts'].unlocked && gameState.gameTime >= gameState.nextContractTime) { generateContract(); gameState.nextContractTime = gameState.gameTime + 180 + Math.random() * 60; }
+    if (gameState.activeContract) {
+        gameState.activeContract.timeLeft -= deltaTime;
+        if (gameState.activeContract.timeLeft <= 0) { showNotification("Contract Failed", "You ran out of time!", "error"); gameState.activeContract = null; }
+        updateContractUI();
+    }
+}
+
+function spawnVehicles() {
+    let busCount = gameState.vehicles.filter(v => v.type === 'bus').length;
+    let carSpawnModifier = Math.max(0.1, 1 - (busCount * 0.1));
+    let baseInterval = 0.5;
+    const spawnInterval = (gameState.isRushHour ? baseInterval / 3 : baseInterval) * carSpawnModifier;
+
+    if (gameState.gameTime < gameState.lastVehicleSpawn + spawnInterval) return;
+    gameState.lastVehicleSpawn = gameState.gameTime;
+
+    const spawnType = Math.random();
+    
+    // Prioritize stadium event traffic if active
+    if (gameState.isStadiumEvent && Math.random() < 0.3) { // 30% of spawns during event are stadium related
+        spawnStadiumVisitor();
+    } 
+    else if (spawnType < 0.80) spawnCar();
+    else if (spawnType < 0.93) spawnTruck();
+    else if (spawnType < 0.98) spawnBus();
+    else spawnTourist(); 
+}
+
+function spawnCar() {
+    const residential = gameState.districts.filter(d => d.type === 'residential');
+    const destinations = gameState.districts.filter(d => d.type !== 'residential' && !d.facility && d.connectionCandidates.some(c => getRoadTile(c)?.connected)); // Exclude facilities
+    if (!residential.length || !destinations.length) return;
+    const startDistrict = residential[Math.floor(Math.random() * residential.length)];
+    const endDistrict = destinations[Math.floor(Math.random() * destinations.length)];
+    let spawnRate = 1;
+    if(startDistrict.specialization === 'high_density') spawnRate = 1.5;
+    if(startDistrict.specialization === 'suburban') spawnRate = 0.7;
+    if (Math.random() > spawnRate) return;
+
+    const startNodeInternal = findSpawnableRoad(startDistrict);
+    if (!startNodeInternal) return;
+    const endNodeInternal = findRandomInternalRoad(endDistrict);
+    if (!endNodeInternal) return; // Need valid end node too
+    const path = findPath(startNodeInternal, endNodeInternal, gameState.roadNodes);
+    if (path) {
+        const [startX, startY] = startNodeInternal.split(',').map(Number);
+        const newCar = { x: startX * TILE_SIZE + TILE_SIZE/2, y: startY * TILE_SIZE + TILE_SIZE/2, type: 'car', state: 'goingToWork', path, pathIndex: 0, currentSegmentKey: startNodeInternal, speed: 70 + Math.random() * 20, color: `hsl(${Math.random() * 360}, 80%, 60%)`, homeDistrictId: startDistrict.id, workDistrictId: endDistrict.id, lane: Math.floor(Math.random() * 4), nextRerouteCheck: gameState.gameTime + REROUTE_CHECK_INTERVAL + Math.random()*2, lastMovedTime: gameState.gameTime };
+        addVehicle(newCar);
+    }
+}
+
+function spawnTruck() {
+    const industrial = gameState.districts.filter(d => d.type === 'industrial');
+    const commercial = gameState.districts.filter(d => d.type === 'commercial' && !d.facility && d.connectionCandidates.some(c => getRoadTile(c)?.connected)); // Exclude facilities
+    const warehouses = Object.keys(gameState.warehouses);
+
+    if (!industrial.length || (!commercial.length && warehouses.length === 0) ) return; // Need either warehouse or commercial
+
+    const startDistrict = industrial[Math.floor(Math.random() * industrial.length)];
+    let endNode = null;
+    let state = 'deliveringGoods'; // Default direct to commercial
+    let workDistrictId = null;
+
+     // Prioritize warehouse route if available
+     if (warehouses.length > 0 && gameState.techTree['logistics_hub'].unlocked) {
+         endNode = warehouses[Math.floor(Math.random() * warehouses.length)];
+         state = 'goingToWarehouse';
+         // Need to eventually find a commercial district ID for the final leg
+          if (commercial.length > 0) {
+              workDistrictId = commercial[Math.floor(Math.random() * commercial.length)].id;
+          } else { return; } // No commercial to deliver to after warehouse
+     } else if (commercial.length > 0) { // Fallback to direct commercial
+         const endDistrict = commercial[Math.floor(Math.random() * commercial.length)];
+         endNode = findRandomInternalRoad(endDistrict);
+         workDistrictId = endDistrict.id;
+     }
+
+    if (!endNode) return; // No valid destination
+
+    let spawnRate = 1;
+    if(startDistrict.specialization === 'manufacturing' || startDistrict.facility === 'factory') spawnRate = 2.0; // Increased spawn rate for spec and facility
+    if (Math.random() > spawnRate) return;
+
+    const startNodeInternal = findSpawnableRoad(startDistrict);
+    if (!startNodeInternal) return;
+
+    const path = findPath(startNodeInternal, endNode, gameState.roadNodes);
+    if (path) {
+        let speed = 50 + Math.random() * 10;
+        if(startDistrict.specialization === 'logistics') speed *= 1.5;
+        const [startX, startY] = startNodeInternal.split(',').map(Number);
+        const newTruck = { x: startX * TILE_SIZE + TILE_SIZE/2, y: startY * TILE_SIZE + TILE_SIZE/2, type: 'truck', state, path, pathIndex: 0, currentSegmentKey: startNodeInternal, speed, color: '#f59e0b', homeDistrictId: startDistrict.id, workDistrictId, // Store final commercial ID
+        intermediateDest: (state === 'goingToWarehouse' ? endNode : null), // Store warehouse key if needed
+        lane: Math.floor(Math.random() * 4), warehouseBonus: 0, nextRerouteCheck: gameState.gameTime + REROUTE_CHECK_INTERVAL + Math.random()*2, lastMovedTime: gameState.gameTime };
+        addVehicle(newTruck);
+    }
+}
+
+function spawnBus() {
+    if (Object.keys(gameState.busDepots).length === 0) return;
+    const depots = Object.keys(gameState.busDepots);
+    const startNode = depots[Math.floor(Math.random() * depots.length)];
+    const connectedDistricts = gameState.districts.filter(d => !d.facility && d.connectionCandidates.some(c => getRoadTile(c)?.connected)); // Exclude facilities
+    if (connectedDistricts.length < 2) return;
+    let route = [findRandomInternalRoad(connectedDistricts[0])];
+    for(let i = 1; i < Math.min(connectedDistricts.length, 4); i++) {
+        route.push(findRandomInternalRoad(connectedDistricts[i]));
+    }
+    route = route.filter(r => r !== null); // Ensure no null routes
+    if(route.length === 0) return;
+
+    const path = findPath(startNode, route[0], gameState.roadNodes);
+    if (path) {
+        const [startX, startY] = startNode.split(',').map(Number);
+        const newBus = { x: startX * TILE_SIZE + TILE_SIZE/2, y: startY * TILE_SIZE + TILE_SIZE/2, type: 'bus', state: 'patrolling', path, pathIndex: 0, currentSegmentKey: startNode, speed: 40 + Math.random() * 10, color: '#3b82f6', route, routeIndex: 0, lane: Math.floor(Math.random() * 4), nextRerouteCheck: gameState.gameTime + REROUTE_CHECK_INTERVAL + Math.random()*2, lastMovedTime: gameState.gameTime };
+        addVehicle(newBus);
+    }
+}
+
+function spawnTourist() {
+    const airportDistrict = gameState.districts.find(d => d.facility === 'airport');
+    if (!airportDistrict) return; // No airport exists
+    
+    const destinations = gameState.districts.filter(d => d.type === 'commercial' && !d.facility && d.connectionCandidates.some(c => getRoadTile(c)?.connected)); // Exclude facilities
+    const parks = Object.keys(gameState.parks);
+    
+    if (destinations.length === 0 && parks.length === 0) return;
+
+    const startNode = airportDistrict.airportConnections[Math.floor(Math.random() * airportDistrict.airportConnections.length)];
+     if (!getRoadTile(startNode)?.connected) return; // Airport connection must be connected to highway
+
+    let endNode = null;
+    let finalDestId = null; // Store ID for XP
+    if (parks.length > 0 && Math.random() > 0.5) { // 50% chance to go to a park
+        endNode = parks[Math.floor(Math.random() * parks.length)];
+        finalDestId = gameState.parks[endNode].districtId; // Park belongs to a district
+    } else if (destinations.length > 0) { // Go to commercial
+        const endDistrict = destinations[Math.floor(Math.random() * destinations.length)];
+        endNode = findRandomInternalRoad(endDistrict);
+        finalDestId = endDistrict.id;
+    }
+    
+    if (!endNode) return;
+
+    const path = findPath(startNode, endNode, gameState.roadNodes);
+    if (path) {
+         const [startX, startY] = startNode.split(',').map(Number);
+         const newTourist = { x: startX * TILE_SIZE + TILE_SIZE/2, y: startY * TILE_SIZE + TILE_SIZE/2, type: 'tourist', state: 'sightseeing', path, pathIndex: 0, currentSegmentKey: startNode, speed: 60 + Math.random()*10, color: '#a855f7', homeDistrictId: airportDistrict.id, workDistrictId: finalDestId, // Use district ID for XP
+         lane: Math.floor(Math.random() * 4), nextRerouteCheck: gameState.gameTime + REROUTE_CHECK_INTERVAL + Math.random()*2, lastMovedTime: gameState.gameTime, finalDestNode: endNode };
+         addVehicle(newTourist);
+    }
+}
+
+function spawnStadiumVisitor() {
+     const stadiumDistrict = gameState.districts.find(d => d.id === gameState.stadiumEventDistrictId);
+     if (!stadiumDistrict) return;
+
+     // Spawn from random connected residential districts
+     const residential = gameState.districts.filter(d => d.type === 'residential' && d.connectionCandidates.some(c => getRoadTile(c)?.connected));
+     if (residential.length === 0) return;
+     const startDistrict = residential[Math.floor(Math.random() * residential.length)];
+
+     const startNode = findSpawnableRoad(startDistrict);
+     const endNode = findRandomInternalRoad(stadiumDistrict); // Target inside stadium district
+
+     if (!startNode || !endNode) return;
+
+     const path = findPath(startNode, endNode, gameState.roadNodes);
+     if (path) {
+         const [startX, startY] = startNode.split(',').map(Number);
+         // Visually distinct stadium visitor car
+         const visitor = { x: startX * TILE_SIZE + TILE_SIZE/2, y: startY * TILE_SIZE + TILE_SIZE/2, type: 'car', state: 'goingToEvent', path, pathIndex: 0, currentSegmentKey: startNode, speed: 70 + Math.random() * 20, color: '#ec4899', homeDistrictId: startDistrict.id, workDistrictId: stadiumDistrict.id, lane: Math.floor(Math.random() * 4), nextRerouteCheck: gameState.gameTime + REROUTE_CHECK_INTERVAL + Math.random()*2, lastMovedTime: gameState.gameTime, finalDestNode: endNode };
+         addVehicle(visitor);
+     }
+}
+
+
+function addVehicle(vehicle) {
+    gameState.vehicles.push(vehicle);
+    const startRoad = getRoadTile(vehicle.currentSegmentKey);
+    if(startRoad && startRoad.hasOwnProperty('vehicleCount')) startRoad.vehicleCount++;
+    else console.warn("Vehicle added to non-existent or non-road start tile:", vehicle.currentSegmentKey);
+}
+
+function findSpawnableRoad(district) {
+     if (district.facility === 'airport') { // Airport districts spawn tourists from airport connections
+         const connectedPoints = district.airportConnections.filter(key => getRoadTile(key)?.connected);
+         return connectedPoints.length > 0 ? connectedPoints[Math.floor(Math.random() * connectedPoints.length)] : null;
+     }
+    const spawnableInternalRoads = district.internalRoadKeys.filter(key => !district.grid[key]?.isOutskirt);
+    if (spawnableInternalRoads.length === 0) return null; // No internal roads?
+
+    // Filter for available capacity
+    const availableRoads = spawnableInternalRoads.filter(key => {
+        const tile = getRoadTile(key);
+        return tile && tile.hasOwnProperty('vehicleCount') && tile.vehicleCount < tile.capacity;
+    });
+    if (availableRoads.length === 0) return null; // No available roads
+
+    // Pick a random available road
+    return availableRoads[Math.floor(Math.random() * availableRoads.length)];
+}
+function findRandomInternalRoad(district) {
+     if(!district || district.facility === 'airport') return null; // Cannot target inside airport
+     const roads = district.internalRoadKeys;
+     return roads.length > 0 ? roads[Math.floor(Math.random() * roads.length)] : null;
+}
+
+function updateVehicles(deltaTime) {
+    for (let i = gameState.vehicles.length - 1; i >= 0; i--) {
+        const v = gameState.vehicles[i];
+        if (!v) continue; // Safety check
+
+         // --- Dynamic Rerouting ---
+        if (gameState.gameTime >= (v.nextRerouteCheck || 0)) {
+            checkAndApplyReroute(v);
+            v.nextRerouteCheck = gameState.gameTime + REROUTE_CHECK_INTERVAL + Math.random()*2; // Schedule next check
+        }
+
+        if (handlePathCompletion(v)) {
+            gameState.vehicles.splice(i, 1);
+            continue;
+        }
+        if (!v.path) { // Vehicle removed if path completion failed to find next path
+             if (v.currentSegmentKey) {
+                 const currentTile = getRoadTile(v.currentSegmentKey);
+                 if (currentTile && currentTile.hasOwnProperty('vehicleCount')) currentTile.vehicleCount = Math.max(0, currentTile.vehicleCount - 1); 
+             }
+             gameState.vehicles.splice(i, 1);
+             continue;
+        }
+        if (v.pathIndex >= v.path.length - 1) { // Path exists but is complete (should be handled by completion logic, but safety check)
+             if (v.currentSegmentKey) {
+                 const currentTile = getRoadTile(v.currentSegmentKey);
+                 if (currentTile && currentTile.hasOwnProperty('vehicleCount')) currentTile.vehicleCount = Math.max(0, currentTile.vehicleCount - 1);
+             }
+             gameState.vehicles.splice(i, 1); 
+             continue;
+        }
+
+        const nextNodeKey = v.path[v.pathIndex + 1];
+        const nextRoad = getRoadTile(nextNodeKey);
+        
+        // Intersection/Merge Logic: Check if the next node requires yielding
+        let shouldWait = false;
+        if (nextRoad && nextRoad.hasOwnProperty('capacity')) { // Ensure nextRoad is a road/tile with capacity
+             if (nextRoad.vehicleCount >= nextRoad.capacity) {
+                 shouldWait = true;
+             } else {
+                 const currentRoad = getRoadTile(v.currentSegmentKey);
+                 const neighborsOfNext = gameState.roadNodes[nextNodeKey]?.neighbors || [];
+                 const incomingToNext = neighborsOfNext.filter(n => n !== v.currentSegmentKey && getRoadTile(n)); 
+
+                 if (incomingToNext.length > 1 && (!currentRoad || (currentRoad.hasOwnProperty('type') && currentRoad.type !== 'road'))) { // If it's an intersection (>2 incoming besides current) AND current isn't a highway (prioritize highway flow)
+                     if (nextRoad.vehicleCount / nextRoad.capacity > 0.5 && Math.random() < 0.3) { // Increased chance to wait at busy intersections from non-highways
+                         shouldWait = true;
+                     }
+                 } else if (currentRoad && currentRoad.hasOwnProperty('lanes') && nextRoad.hasOwnProperty('lanes') && nextRoad.lanes < currentRoad.lanes) { // Merging
+                      if (nextRoad.vehicleCount / nextRoad.capacity > 0.6 && Math.random() < 0.3) {
+                          shouldWait = true;
+                      }
+                 }
+             }
+        } else {
+             // console.warn("Next road segment not found during movement:", nextNodeKey, "Current:", v.currentSegmentKey, "Path:", v.path); // Reduced logging spam
+             if (v.currentSegmentKey) { 
+                 const currentTile = getRoadTile(v.currentSegmentKey);
+                 if(currentTile && currentTile.hasOwnProperty('vehicleCount')) currentTile.vehicleCount = Math.max(0, currentTile.vehicleCount - 1);
+             }
+             gameState.vehicles.splice(i, 1);
+             continue;
+        }
+
+        // --- Despawn Check ---
+        const timeIdle = gameState.gameTime - (v.lastMovedTime || gameState.gameTime);
+        if (shouldWait && isDistrictRoad(v.currentSegmentKey) && timeIdle > VEHICLE_DESPAWN_TIME) {
+             // console.log("Vehicle despawned due to inactivity on district road."); // Reduce console spam
+             const currentTile = getRoadTile(v.currentSegmentKey);
+             if(currentTile && currentTile.hasOwnProperty('vehicleCount')) currentTile.vehicleCount = Math.max(0, currentTile.vehicleCount - 1);
+             gameState.vehicles.splice(i, 1);
+             continue; // Remove the vehicle and skip movement
+        } else if (shouldWait && gameState.grid[v.currentSegmentKey] && timeIdle > VEHICLE_HIGHWAY_DESPAWN_TIME) {
+             // console.log("Vehicle despawned from highway due to long wait.");
+             showNotification("Traffic Cleared", "A stuck vehicle on the highway was removed.", "info");
+             const currentTile = getRoadTile(v.currentSegmentKey);
+             if(currentTile && currentTile.hasOwnProperty('vehicleCount')) currentTile.vehicleCount = Math.max(0, currentTile.vehicleCount - 1);
+             gameState.vehicles.splice(i, 1);
+             continue; 
+        } else if (!shouldWait) {
+             v.lastMovedTime = gameState.gameTime; // Reset timer if not waiting
+        }
+
+
+        if (shouldWait) continue; // Vehicle waits
+
+        // --- Movement Code ---
+        const [targetGridX, targetGridY] = nextNodeKey.split(',').map(Number);
+        const targetX = targetGridX * TILE_SIZE + TILE_SIZE / 2, targetY = targetGridY * TILE_SIZE + TILE_SIZE / 2;
+        const dx = targetX - v.x, dy = targetY - v.y, dist = Math.sqrt(dx * dx + dy * dy);
+        const isToll = gameState.tollBooths[v.currentSegmentKey];
+        let congestion = (nextRoad && nextRoad.hasOwnProperty('capacity') && nextRoad.capacity > 0) ? nextRoad.vehicleCount / nextRoad.capacity : 0;
+        let speedMultiplier = 1 - Math.min(0.8, congestion);
+        if (isToll) speedMultiplier *= 0.3;
+        const moveDist = v.speed * deltaTime * speedMultiplier;
+
+        if (dist < moveDist) {
+            if (isToll) { 
+                const earnings = INCOME.TOLL;
+                gameState.money += earnings; 
+                gameState.tollBooths[v.currentSegmentKey].lifetimeEarnings = (gameState.tollBooths[v.currentSegmentKey].lifetimeEarnings || 0) + earnings;
+                createFloatingText(`+${formatCurrency(earnings)}`, v.x, v.y); 
+            }
+             // Handle rest stop visit
+             if (gameState.serviceBuildings[v.currentSegmentKey]) {
+                  const earnings = INCOME.REST_STOP_VISIT;
+                  gameState.money += earnings;
+                  // Ensure lifetimeEarnings is initialized before adding
+                  if (gameState.serviceBuildings[v.currentSegmentKey].lifetimeEarnings === undefined) {
+                       gameState.serviceBuildings[v.currentSegmentKey].lifetimeEarnings = 0;
+                  }
+                  gameState.serviceBuildings[v.currentSegmentKey].lifetimeEarnings += earnings;
+                  createFloatingText(`+${formatCurrency(earnings)}`, v.x, v.y);
+             }
+
+            const leavingRoad = getRoadTile(v.currentSegmentKey);
+            if (leavingRoad && leavingRoad.hasOwnProperty('vehicleCount')) leavingRoad.vehicleCount = Math.max(0, leavingRoad.vehicleCount - 1);
+           
+            v.pathIndex++; 
+            v.currentSegmentKey = v.path[v.pathIndex]; 
+
+            const newlyEnteredRoad = getRoadTile(v.currentSegmentKey);
+            if(newlyEnteredRoad && newlyEnteredRoad.hasOwnProperty('vehicleCount')) newlyEnteredRoad.vehicleCount++;
+            
+            v.x = targetX; v.y = targetY; 
+            v.lastMovedTime = gameState.gameTime; // Update moved time on segment change
+        } else { 
+            v.x += (dx / dist) * moveDist; 
+            v.y += (dy / dist) * moveDist; 
+            // Only update lastMovedTime if not stuck (i.e., if dx/dy aren't 0, which they won't be if dist > moveDist)
+            if (dist > 0) {
+                v.lastMovedTime = gameState.gameTime;
+            }
+        }
+    }
+}
+
+
+function handlePathCompletion(v) {
+    if (!v.path || v.pathIndex < v.path.length - 1) return false; // Not at end of path yet
+
+    const oldRoad = getRoadTile(v.currentSegmentKey);
+    // Decrement will be handled by the logic that removes the vehicle or starts a new path
+
+    const startDistrict = gameState.districts.find(d => d.id === v.homeDistrictId);
+    let endDistrict = gameState.districts.find(d => d.id === v.workDistrictId); 
+    
+    if (!endDistrict && v.state === 'sightseeing') {
+         const park = gameState.parks[v.workDistrictId]; 
+         if (park) {
+             endDistrict = gameState.districts.find(d => d.id === park.districtId);
+         }
+    }
+    
+    if (endDistrict) { 
+         endDistrict.xp += XP_PER_TRIP;
+    }
+   
+    if (startDistrict && (v.state === 'returningHome' || v.state === 'leavingEvent')) startDistrict.xp += XP_PER_TRIP; 
+    
+    let incomeMultiplier = 1;
+    let finalDestinationDistrict = endDistrict; 
+    let happinessBonus = endDistrict?.happiness || 0;
+
+    switch(v.state) {
+        case 'goingToWork':
+            if(endDistrict) {
+                 happinessBonus = endDistrict.happiness;
+                 if(endDistrict.specialization === 'financial') incomeMultiplier = 1.5;
+                const income = (endDistrict.type === 'commercial' ? INCOME.CAR_COMMERCIAL : INCOME.CAR_INDUSTRIAL) * incomeMultiplier * (1 + happinessBonus);
+                gameState.money += income; gameState.batchedIncome += income;
+            }
+            v.state = 'returningHome';
+            v.path = findPath(v.currentSegmentKey, findRandomInternalRoad(startDistrict), gameState.roadNodes);
+            v.pathIndex = 0;
+            break;
+         case 'goingToWarehouse': { 
+             v.state = 'deliveringGoods'; 
+             v.warehouseBonus = INCOME.WAREHOUSE_BONUS_MULT; 
+             const commercialDestinations = gameState.districts.filter(d => d.type === 'commercial' && !d.facility && d.connectionCandidates.some(c => getRoadTile(c)?.connected));
+             if (commercialDestinations.length > 0) {
+                 const finalCommDistrict = commercialDestinations[Math.floor(Math.random() * commercialDestinations.length)];
+                 v.workDistrictId = finalCommDistrict.id; 
+                 v.path = findPath(v.currentSegmentKey, findRandomInternalRoad(finalCommDistrict), gameState.roadNodes);
+                 v.pathIndex = 0;
+                 if (!v.path) { 
+                      console.warn("Truck couldn't find path from warehouse to commercial, removing.");
+                      if(oldRoad && oldRoad.hasOwnProperty('vehicleCount')) oldRoad.vehicleCount = Math.max(0, oldRoad.vehicleCount - 1);
+                      return true;
+                 }
+             } else {
+                  if(oldRoad && oldRoad.hasOwnProperty('vehicleCount')) oldRoad.vehicleCount = Math.max(0, oldRoad.vehicleCount - 1); 
+                  return true; 
+             }
+             break;
+         }
+        case 'deliveringGoods':
+             finalDestinationDistrict = gameState.districts.find(d => d.id === v.workDistrictId); // Get actual commercial district
+             if(finalDestinationDistrict) {
+                 happinessBonus = finalDestinationDistrict.happiness;
+                 if(finalDestinationDistrict.specialization === 'financial') incomeMultiplier = 1.5;
+             }
+             const truckIncome = INCOME.TRUCK_DELIVERY_BASE * incomeMultiplier * (1 + happinessBonus) * (1 + v.warehouseBonus); 
+             gameState.money += truckIncome; gameState.batchedIncome += truckIncome;
+             if(oldRoad && oldRoad.hasOwnProperty('vehicleCount')) oldRoad.vehicleCount = Math.max(0, oldRoad.vehicleCount - 1);
+             return true; 
+        case 'returningHome': { // Use block scope
+            let shoppingChance = 0.3;
+            if(startDistrict?.specialization === 'retail') shoppingChance = 0.6; 
+            if (Math.random() < shoppingChance) {
+                const commercialD = gameState.districts.filter(d => d.type === 'commercial' && !d.facility && d.connectionCandidates.some(c => getRoadTile(c)?.connected));
+                if (commercialD.length > 0) {
+                    const endShoppingDistrict = commercialD[0];
+                    v.state = 'shopping';
+                    v.path = findPath(v.currentSegmentKey, findRandomInternalRoad(endShoppingDistrict), gameState.roadNodes);
+                    v.pathIndex = 0;
+                    v.workDistrictId = endShoppingDistrict.id; 
+                    if (!v.path) { 
+                         console.warn("Car couldn't find path for shopping, removing.");
+                         if(oldRoad && oldRoad.hasOwnProperty('vehicleCount')) oldRoad.vehicleCount = Math.max(0, oldRoad.vehicleCount - 1);
+                         return true;
+                     }
+                    break; 
+                }
+            }
+            if(oldRoad && oldRoad.hasOwnProperty('vehicleCount')) oldRoad.vehicleCount = Math.max(0, oldRoad.vehicleCount - 1);
+            return true; 
+        }
+        case 'shopping':
+            v.state = 'returningHome'; 
+            v.path = findPath(v.currentSegmentKey, findRandomInternalRoad(startDistrict), gameState.roadNodes);
+            v.pathIndex = 0;
+             if (!v.path) { 
+                 console.warn("Car couldn't find path home after shopping, removing.");
+                 if(oldRoad && oldRoad.hasOwnProperty('vehicleCount')) oldRoad.vehicleCount = Math.max(0, oldRoad.vehicleCount - 1);
+                 return true;
+             }
+            break;
+         case 'sightseeing': 
+             if(endDistrict) happinessBonus = endDistrict.happiness; 
+             
+             const touristIncome = INCOME.TOURIST_TRIP * (1 + happinessBonus);
+             gameState.money += touristIncome; gameState.batchedIncome += touristIncome;
+             if(oldRoad && oldRoad.hasOwnProperty('vehicleCount')) oldRoad.vehicleCount = Math.max(0, oldRoad.vehicleCount - 1);
+             return true; 
+         case 'goingToEvent': 
+             v.state = 'leavingEvent'; 
+             v.path = findPath(v.currentSegmentKey, findRandomInternalRoad(startDistrict), gameState.roadNodes);
+             v.pathIndex = 0;
+              if (!v.path) { 
+                 console.warn("Visitor couldn't find path home from event, removing.");
+                 if(oldRoad && oldRoad.hasOwnProperty('vehicleCount')) oldRoad.vehicleCount = Math.max(0, oldRoad.vehicleCount - 1);
+                 return true;
+             }
+             break; 
+         case 'leavingEvent': 
+              if(oldRoad && oldRoad.hasOwnProperty('vehicleCount')) oldRoad.vehicleCount = Math.max(0, oldRoad.vehicleCount - 1);
+              return true; // Despawn now
+        case 'patrolling':
+            v.routeIndex = (v.routeIndex + 1) % v.route.length;
+            const nextStop = v.route[v.routeIndex];
+            v.path = findPath(v.currentSegmentKey, nextStop, gameState.roadNodes);
+            v.pathIndex = 0;
+             if (!v.path) { // Handle case where path for next leg fails
+                 console.warn("Bus couldn't find path for next route segment, removing.");
+                 if(oldRoad && oldRoad.hasOwnProperty('vehicleCount')) oldRoad.vehicleCount = Math.max(0, oldRoad.vehicleCount - 1);
+                 return true;
+             }
+            break;
+    }
+    
+    if (!v.path) {
+        console.warn("No path found for vehicle's next state AFTER switch, removing:", v);
+         if(oldRoad && oldRoad.hasOwnProperty('vehicleCount')) oldRoad.vehicleCount = Math.max(0, oldRoad.vehicleCount - 1); // Ensure count is decremented if removed here
+        return true;
+    }
+    
+    // Vehicle continues, has a new path.
+    // Re-add vehicle count to its *current* tile (which is the start of the new path)
+    const newRoad = getRoadTile(v.currentSegmentKey);
+    if(newRoad && newRoad.hasOwnProperty('vehicleCount')) newRoad.vehicleCount++;
+    else console.warn("Vehicle started new path segment on non-existent road:", v.currentSegmentKey);
+    
+    return false; // Vehicle was not removed
+}
+
+
+function checkAndApplyReroute(v) {
+     if (!v.path || v.path.length < 2) return; // Cant reroute if no path or path is 1 step
+     let finalDestinationKey = v.path[v.path.length - 1]; // Get the last node from the current path
+
+    if (!finalDestinationKey || !v.currentSegmentKey || finalDestinationKey === v.currentSegmentKey) return;
+
+    // Use BFS for rerouting check as it's faster and includes randomness
+    const newPath = findPath_BFS(v.currentSegmentKey, finalDestinationKey, gameState.roadNodes); 
+    if (!newPath || newPath.length <= 1) return; // No new path found or it's trivial
+
+    // Estimate costs using simple length for performance
+    const currentPathCost = v.path.length - v.pathIndex; // Remaining length
+    const newPathCost = newPath.length;
+
+    // Switch if new path is significantly better (more than 2 tiles shorter)
+    // OR if the current path is much longer (e.g., > 20 tiles) and new path isn't much worse
+    if (newPathCost < currentPathCost - 2 || (currentPathCost > 20 && newPathCost < currentPathCost + LONGER_PATH_THRESHOLD)) { 
+        // Update vehicle count: decrement count on the old *next* tile, increment on the new *next* tile if different
+        const oldNextKey = v.path[v.pathIndex + 1];
+        const newNextKey = newPath[1]; // Index 1 is the next step from currentSegmentKey (index 0)
+        
+        if (oldNextKey && oldNextKey !== newNextKey) {
+            const oldNextRoad = getRoadTile(oldNextKey);
+             if (oldNextRoad && oldNextRoad.hasOwnProperty('vehicleCount')) oldNextRoad.vehicleCount = Math.max(0, oldNextRoad.vehicleCount - 1);
+        }
+         if (newNextKey && oldNextKey !== newNextKey) {
+             const newNextRoad = getRoadTile(newNextKey);
+             if (newNextRoad && newNextRoad.hasOwnProperty('vehicleCount')) newNextRoad.vehicleCount++;
+         }
+
+        v.path = newPath;
+        v.pathIndex = 0; // Start from the beginning of the new path relative to current pos
+    }
+}
+
+
+function estimatePathCost(path) { // Simple length based cost for rerouting check
+    if (!path || path.length === 0) return Infinity;
+    return path.length;
+}
+
+
+function updateGameStats() {
+    let totalCongestion = 0; let roadSegments = 0; 
+    const allRoads = { ...gameState.grid };
+    gameState.districts.forEach(d => Object.assign(allRoads, d.grid));
+
+    for(const key in allRoads) { 
+        const road = allRoads[key]; 
+        if (road && road.hasOwnProperty('capacity') && road.capacity > 0) { // Only count tiles that have capacity
+            totalCongestion += Math.max(0, road.vehicleCount - road.capacity); 
+            roadSegments++; 
+        }
+    }
+    const avgOverCapacity = roadSegments > 0 ? totalCongestion / roadSegments : 0;
+    let baseEfficiency = Math.max(0, 100 - avgOverCapacity * 20);
+    const maintenanceBonus = Object.keys(gameState.maintenanceDepots).length * 5;
+    gameState.efficiency = Math.min(100, baseEfficiency + maintenanceBonus);
+    updateUI();
+    if (gameState.money < 0 && !gameState.gameOver) gameOver("You've run out of money!");
+}
+
+// --- PLAYER ACTIONS & TOOLS ---
+function buildRoadFromPath(path) {
+    const cost = path.reduce((acc, p) => {
+        const key = `${p.x},${p.y}`;
+        // Prevent building over existing buildings/roads unless it's the start/end connection point
+        const tile = getRoadTile(key);
+        // Allow building OVER district roads or empty space
+        if (tile && tile.type !== 'road' && !isDistrictRoad(key) && tile.type !== 'airport_connection' && !(path.length > 1 && (p === path[0] || p === path[path.length-1]))) {
+            showNotification("Invalid Path", "Cannot build over existing highway structures.", "error");
+            return Infinity; // Set cost to infinity to prevent build
+        }
+        return tile?.type === 'road' ? acc : acc + COSTS.ROAD_PER_SEGMENT;
+    }, 0);
+
+    if (gameState.money < cost) { 
+        if (cost !== Infinity) showNotification("Insufficient Funds", `Need ${formatCurrency(cost)}.`, "error"); 
+        return; 
+    }
+    
+    path.forEach(p => { 
+        const key = `${p.x},${p.y}`; 
+        if (!gameState.grid[key]) { // Only build if it's not already a highway segment
+             // Check if building over other structures - allow overwriting district roads
+             if (!getRoadTile(key) || isDistrictRoad(key) || getRoadTile(key)?.type === 'airport_connection') {
+                 // Demolish district road if present (visual cleanup, no refund needed)
+                 gameState.districts.forEach(d => { if(d.grid[key]) delete d.grid[key]; });
+                gameState.grid[key] = { type: 'road', lanes: 2, capacity: 2 * ROAD_CAPACITY_PER_LANE, vehicleCount: 0 }; 
+             }
+        }
+    });
+    gameState.money -= cost; 
+    rebuildRoadGraph(); 
+    updateUI();
+}
+
+
+function upgradeRoad(gridX, gridY) {
+    const key = `${gridX},${gridY}`;
+    const startTile = gameState.grid[key];
+    if (!startTile || startTile.type !== 'road' || !gameState.techTree.advanced_roadworks.unlocked) return;
+
+    const maxLanes = gameState.techTree.upgrade_4_lanes.unlocked ? 4 : 3;
+    if (startTile.lanes >= maxLanes) return;
+
+    let segmentsToUpgrade = new Set([key]);
+    let queue = [key];
+    let visited = new Set([key]);
+
+    while (queue.length > 0) {
+        const currentKey = queue.shift();
+        const neighbors = getAllNeighbors(...currentKey.split(',').map(Number)); // Check diagonal too for continuity
+        let highwayNeighbors = 0;
+        let potentialNext = [];
+        for (const nKey of neighbors) {
+            if (gameState.grid[nKey]) {
+                highwayNeighbors++;
+                if (!visited.has(nKey)) {
+                    potentialNext.push(nKey);
+                }
+            }
+        }
+         // Stop at intersections (more than 2 neighbors) OR when branching off significantly
+        const currentCoords = currentKey.split(',').map(Number);
+        const [currX, currY] = currentCoords;
+        const isIntersection = getAllNeighbors(currX, currY).filter(nk => gameState.grid[nk]).length > 2;
+
+        if (!isIntersection) { 
+            for (const nKey of potentialNext) {
+                 // Basic check to prevent upgrading short spurs branching off the main line
+                 const nextCoords = nKey.split(',').map(Number);
+                 const nextNeighbors = getAllNeighbors(nextCoords[0], nextCoords[1]).filter(nnk => gameState.grid[nnk]).length;
+                 if (nextNeighbors >= 2) { // Only continue if the next piece also looks like part of a line/curve
+                    visited.add(nKey);
+                    segmentsToUpgrade.add(nKey);
+                    queue.push(nKey);
+                 }
+            }
+        }
+    }
+
+
+    let totalCost = 0;
+    segmentsToUpgrade.forEach(segKey => {
+        const tile = gameState.grid[segKey];
+        if (tile && tile.lanes < maxLanes) {
+            totalCost += COSTS.UPGRADE_PER_SEGMENT * tile.lanes;
+        }
+    });
+
+    if (gameState.money < totalCost) {
+        showNotification("Insufficient Funds", `Need ${formatCurrency(totalCost)} to upgrade stretch.`, "error");
+        return;
+    }
+
+    gameState.money -= totalCost;
+    segmentsToUpgrade.forEach(segKey => {
+        const tile = gameState.grid[segKey];
+        if (tile && tile.lanes < maxLanes) {
+            tile.lanes++;
+            tile.capacity = tile.lanes * ROAD_CAPACITY_PER_LANE;
+        }
+    });
+
+    updateUI();
+    showNotification('Highway Upgraded', `${segmentsToUpgrade.size} segments upgraded.`, 'info');
+}
+
+function buildServiceBuilding(gridX, gridY, type) {
+    const key = `${gridX},${gridY}`;
+    const costMap = {'rest_stop': COSTS.REST_STOP, 'maintenance_depot': COSTS.MAINTENANCE_DEPOT, 'bus_depot': COSTS.BUS_DEPOT, 'research_center': COSTS.RESEARCH_CENTER, 'park': COSTS.PARK, 'warehouse': COSTS.WAREHOUSE};
+    const buildingCollectionMap = {'rest_stop': gameState.serviceBuildings, 'maintenance_depot': gameState.maintenanceDepots, 'bus_depot': gameState.busDepots, 'research_center': gameState.researchCenters, 'park': gameState.parks, 'warehouse': gameState.warehouses};
+    
+    const cost = costMap[type];
+    const buildingCollection = buildingCollectionMap[type];
+
+    if (getRoadTile(key)) { showNotification("Cannot Build", "Location is occupied.", "error"); return; }
+    
+    if (type === 'park') {
+        const district = gameState.districts.find(d => gridX >= d.x && gridX < d.x + d.width && gridY >= d.y && gridY < d.y + d.height);
+        if (!district || district.facility || district.grid[key]) { // Cannot build parks in facility districts or on roads
+            showNotification("Invalid Location", "Parks must be built on empty land inside a non-specialized district.", "error");
+            return;
+        }
+         if (gameState.money < cost) { showNotification("Insufficient Funds", `Need ${formatCurrency(cost)}.`, "error"); return; }
+        gameState.money -= cost; buildingCollection[key] = {type: type, districtId: district.id};
+        district.happiness += 0.1; // 10% bonus per park
+    } else { // Other buildings adjacent to highways
+        const isAdjacentToHighway = getNeighbors(gridX, gridY).some(nKey => gameState.grid[nKey]);
+         if (!isAdjacentToHighway) { 
+             // Allow warehouses next to industrial districts too
+              if (type === 'warehouse') {
+                  const isAdjacentToIndustrialRoad = getNeighbors(gridX, gridY).some(nKey => {
+                      const road = getDistrictRoad(nKey);
+                      return road && gameState.districts.find(d => d.grid[nKey])?.type === 'industrial';
+                  });
+                   if (!isAdjacentToIndustrialRoad) {
+                      showNotification("Cannot Build", "Warehouses must be built next to a highway or an industrial district road.", "error"); return;
+                   }
+              } else {
+                   showNotification("Cannot Build", "Must be built next to a highway.", "error"); return;
+              }
+         }
+        if (gameState.money < cost) { showNotification("Insufficient Funds", `Need ${formatCurrency(cost)}.`, "error"); return; }
+        // Initialize lifetimeEarnings specifically for buildings that use it
+        const buildingData = { type: type, lifetimeEarnings: 0 }; // Initialize all with 0
+        buildingCollection[key] = buildingData; 
+    }
+    rebuildRoadGraph(); updateUI();
+}
+
+
+function buildTollBooth(gridX, gridY) {
+    const key = `${gridX},${gridY}`;
+    if (!gameState.grid[key]) { showNotification("Invalid Location", "Must be built on an existing highway.", "error"); return; }
+    if (gameState.tollBooths[key]) return;
+    if (gameState.money < COSTS.TOLL_BOOTH) { showNotification("Insufficient Funds", `Need ${formatCurrency(COSTS.TOLL_BOOTH)}.`, "error"); return; }
+    gameState.money -= COSTS.TOLL_BOOTH; gameState.tollBooths[key] = { type: 'toll', lifetimeEarnings: 0 };
+    updateUI(); showNotification("Toll Booth Built", "Earn money from passing cars.", "success");
+}
+
+function demolish(gridX, gridY) {
+    const key = `${gridX},${gridY}`;
+    if (gameState.tollBooths[key]) { delete gameState.tollBooths[key]; gameState.money += COSTS.TOLL_BOOTH / 2; } 
+    else if (gameState.grid[key]) { if(gameState.grid[key].vehicleCount > 0) { showNotification("Cannot Demolish", "Road is in use.", "error"); return; } delete gameState.grid[key]; gameState.money += COSTS.DEMOLISH_ROAD_REFUND; }
+    else if (gameState.serviceBuildings[key]) { delete gameState.serviceBuildings[key]; gameState.money += COSTS.REST_STOP / 2; }
+    else if (gameState.maintenanceDepots[key]) { delete gameState.maintenanceDepots[key]; gameState.money += COSTS.MAINTENANCE_DEPOT / 2; }
+    else if (gameState.busDepots[key]) { delete gameState.busDepots[key]; gameState.money += COSTS.BUS_DEPOT / 2; }
+    else if (gameState.researchCenters[key]) { delete gameState.researchCenters[key]; gameState.money += COSTS.RESEARCH_CENTER / 2; }
+    else if (gameState.warehouses[key]) { delete gameState.warehouses[key]; gameState.money += COSTS.WAREHOUSE / 2; }
+    else if (gameState.parks[key]) {
+        const park = gameState.parks[key];
+        const district = gameState.districts.find(d => d.id === park.districtId);
+        if (district) district.happiness -= 0.05;
+        delete gameState.parks[key]; gameState.money += COSTS.PARK / 2;
+    }
+    rebuildRoadGraph(); updateUI();
+}
+
+// --- UTILITY & HELPER FUNCTIONS ---
+function findPath(startKey, endKey, nodeSet) {
+    // Ensure start/end keys are valid pathable nodes before proceeding
+    if (!getRoadTile(startKey) || !getRoadTile(endKey)) {
+        console.warn(`Pathfinding failed: Invalid start (${startKey}) or end (${endKey}) node.`);
+        return null;
+    }
+    // Always use BFS now
+    return findPath_BFS(startKey, endKey, nodeSet);
+}
+
+function findPath_BFS(startKey, endKey, nodeSet) { 
+    if (!getRoadTile(startKey) || !getRoadTile(endKey)) {
+        console.warn(`BFS Pathfinding failed: Invalid start (${startKey}) or end (${endKey}) node.`);
+        return null;
+    }
+
+    let queue = [{ path: [startKey], cost: 0 }]; // Store cost (length) with path
+    let visited = new Map(); // Store minimum cost to reach a node
+    visited.set(startKey, 0);
+
+    let shortestPaths = [];
+    let slightlyLongerPaths = [];
+    let minLength = Infinity;
+    const maxLengthThreshold = LONGER_PATH_THRESHOLD; // Max length difference allowed
+    
+    let iterations = 0; const MAX_ITERATIONS = 15000;
+
+    while (queue.length > 0) {
+         iterations++;
+        if (iterations > MAX_ITERATIONS) {
+            console.warn("BFS exceeded max iterations, pathfinding aborted.");
+             // Return best path found so far if any
+             return shortestPaths.length > 0 ? shortestPaths[0] : (slightlyLongerPaths.length > 0 ? slightlyLongerPaths[0] : null);
+        }
+        
+        let current = queue.shift(); 
+        let node = current.path[current.path.length - 1];
+
+        // Pruning: If current path is already much longer than the best found, stop.
+        if (current.cost > minLength + maxLengthThreshold) continue; 
+
+        if (node === endKey) {
+            if (current.cost < minLength) {
+                // New shortest path found
+                minLength = current.cost;
+                // Move existing shortest to slightly longer, start new shortest list
+                slightlyLongerPaths.push(...shortestPaths.filter(p => p.length <= minLength + maxLengthThreshold)); // Keep only those within threshold
+                shortestPaths = [current.path];
+            } else if (current.cost === minLength) {
+                // Another shortest path
+                shortestPaths.push(current.path);
+            } else if (current.cost <= minLength + maxLengthThreshold) {
+                 // A slightly longer path
+                 slightlyLongerPaths.push(current.path);
+            }
+            continue; // Continue searching within threshold
+        }
+
+        const neighbors = nodeSet[node]?.neighbors || [];
+        for (const neighbor of neighbors) { 
+            if (gameState.accidents[neighbor] || !getRoadTile(neighbor)) continue; // Skip accidents and invalid tiles
+
+            const newCost = current.cost + 1; // Simple BFS cost = length
+
+            // Only explore if it's potentially optimal or within the longer threshold
+            if ((!visited.has(neighbor) || newCost < visited.get(neighbor)) && newCost <= minLength + maxLengthThreshold) {
+                visited.set(neighbor, newCost); // Update visited cost
+                let newPath = [...current.path, neighbor];
+                queue.push({ path: newPath, cost: newCost }); 
+            } 
+        }
+    }
+
+    if (shortestPaths.length === 0 && slightlyLongerPaths.length === 0) {
+        // console.warn(`BFS failed to find path from ${startKey} to ${endKey}`); // Reduce spam
+        return null;
+    }
+
+    // --- Path Selection Logic ---
+    if (shortestPaths.length > 0 && Math.random() > LONGER_PATH_CHANCE) {
+        // ~75% chance to pick a shortest path
+        return shortestPaths[Math.floor(Math.random() * shortestPaths.length)];
+    } else if (slightlyLongerPaths.length > 0) {
+         // ~25% chance to pick a slightly longer path (if available)
+         return slightlyLongerPaths[Math.floor(Math.random() * slightlyLongerPaths.length)];
+    } else {
+         // Fallback if no longer paths found but shortest exist
+         return shortestPaths[Math.floor(Math.random() * shortestPaths.length)];
+    }
+}
+
+function rebuildRoadGraph() {
+    gameState.roadNodes = {};
+    const allValidKeys = new Set([
+        ...Object.keys(gameState.grid),
+        ...Object.keys(gameState.serviceBuildings),
+        ...Object.keys(gameState.maintenanceDepots),
+        ...Object.keys(gameState.busDepots),
+        ...Object.keys(gameState.researchCenters),
+        ...Object.keys(gameState.warehouses),
+        ...Object.keys(gameState.tollBooths),
+    ]);
+     gameState.districts.forEach(d => {
+         Object.keys(d.grid).forEach(key => allValidKeys.add(key)); 
+     });
+
+    allValidKeys.forEach(key => {
+         const tile = getRoadTile(key); 
+         if (!tile) return; 
+
+         const [x, y] = key.split(',').map(Number);
+         getAllNeighbors(x,y).forEach(nKey => { 
+             if (allValidKeys.has(nKey) && getRoadTile(nKey)) { 
+                 addNeighbor(key, nKey); 
+             }
+         });
+    });
+
+    gameState.districts.forEach(d => { 
+        d.connectionCandidates.forEach(key => { 
+            const road = getRoadTile(key); 
+            if(road) {
+                 road.connected = !!gameState.roadNodes[key]?.neighbors.some(n => gameState.grid[n]);
+            }
+        }); 
+    });
+    if(gameState.activeContract) checkContractCompletion();
+}
+
+
+
+function addNeighbor(nodeKey, neighborKey) {
+    if (!gameState.roadNodes[nodeKey]) gameState.roadNodes[nodeKey] = { neighbors: [] };
+    if (!gameState.roadNodes[nodeKey].neighbors.includes(neighborKey)) gameState.roadNodes[nodeKey].neighbors.push(neighborKey);
+}
+// getRoadTile: Returns the tile object if it's a road OR a pathable building (not park)
+function getRoadTile(key) {
+    if (!key) return null;
+    for (const d of gameState.districts) { if (d.grid[key]) return d.grid[key]; } // Includes airport connections now
+    // Buildings are pathable nodes, but don't have vehicleCount etc like roads
+    // Parks are NOT pathable
+    return gameState.grid[key] || gameState.serviceBuildings[key] || gameState.tollBooths[key] || gameState.maintenanceDepots[key] || gameState.busDepots[key] || gameState.researchCenters[key] || gameState.warehouses[key];
+}
+
+// getDistrictRoad: Specifically returns a road tile that belongs to a district's internal grid (Excludes Airport)
+function getDistrictRoad(key) {
+    if(!key) return null;
+    for (const d of gameState.districts) { 
+        if (d.grid[key] && d.facility !== 'airport') return d.grid[key]; // Exclude airport districts explicitly
+    }
+    return null;
+}
+function isDistrictRoad(key) {
+    if(!key) return false;
+    for (const d of gameState.districts) { 
+        if (d.grid[key] && d.facility !== 'airport') return true; // Exclude airport districts explicitly
+    }
+    return false;
+}
+
+
+function getNeighbors(x, y) { return [`${x},${y-1}`, `${x},${y+1}`, `${x-1},${y}`, `${x+1},${y}`]; }
+function getAllNeighbors(x, y) { 
+    return [
+        `${x},${y-1}`, `${x},${y+1}`, `${x-1},${y}`, `${x+1},${y}`, // Cardinal
+        `${x-1},${y-1}`, `${x+1},${y-1}`, `${x-1},${y+1}`, `${x+1},${y+1}` // Diagonal
+    ]; 
+}
+function getLinePoints(x0, y0, x1, y1) {
+    let points = [], dx = Math.abs(x1 - x0), sx = x0 < x1 ? 1 : -1, dy = -Math.abs(y1 - y0), sy = y0 < y1 ? 1 : -1, err = dx + dy, e2;
+    for (;;) { points.push({ x: x0, y: y0 }); if (x0 === x1 && y0 === y1) break; e2 = 2 * err; if (e2 >= dy) { err += dy; x0 += sx; } if (e2 <= dx) { err += dx; y0 += sy; } }
+    return points;
+}
+function screenToWorld(sx, sy) { return { x: (sx - canvas.width / 2) / camera.zoom + camera.x, y: (sy - canvas.height / 2) / camera.zoom + camera.y }; }
+function worldToScreen(wx, wy) { return { x: (wx - camera.x) * camera.zoom + canvas.width / 2, y: (wy - camera.y) * camera.zoom + canvas.height / 2 }; }
+function getVisibleGridBounds() {
+    const sX = Math.floor(camera.x/TILE_SIZE-canvas.width/(2*TILE_SIZE*camera.zoom))*TILE_SIZE, eX = Math.ceil(camera.x/TILE_SIZE+canvas.width/(2*TILE_SIZE*camera.zoom))*TILE_SIZE;
+    const sY = Math.floor(camera.y/TILE_SIZE-canvas.height/(2*TILE_SIZE*camera.zoom))*TILE_SIZE, eY = Math.ceil(camera.y/TILE_SIZE+canvas.height/(2*TILE_SIZE*camera.zoom))*TILE_SIZE;
+    return { startX: sX, endX: eX, startY: sY, endY: eY };
+}
+
+// --- EVENT HANDLERS ---
+function onMouseDown(e) { 
+    mouse.down = true; 
+    mouse.startDrag.x = e.clientX; 
+    mouse.startDrag.y = e.clientY; 
+    mouse.dragging = false; 
+    if (gameState.activeTool === 'road') {
+        mouse.buildPath = [{x: mouse.gridX, y: mouse.gridY}];
+    }
+}
+function onMouseUp(e) {
+    mouse.down = false; 
+    const wasDragging = mouse.dragging; 
+    mouse.dragging = false;
+
+    if (gameState.activeTool === 'road' && mouse.buildPath.length > 0) {
+        const finalPath = new Set();
+        // Add the first point
+        if (mouse.buildPath.length > 0) {
+             finalPath.add(`${mouse.buildPath[0].x},${mouse.buildPath[0].y}`);
+        }
+       
+        for (let i = 0; i < mouse.buildPath.length - 1; i++) {
+            const p1 = mouse.buildPath[i];
+            const p2 = mouse.buildPath[i+1];
+            const segment = getLinePoints(p1.x, p1.y, p2.x, p2.y);
+            segment.forEach(p => finalPath.add(`${p.x},${p.y}`));
+        }
+         // Add the final mouse position point if dragging occurred
+         if (wasDragging) {
+              const lastPoint = mouse.buildPath[mouse.buildPath.length - 1];
+              const finalSegment = getLinePoints(lastPoint.x, lastPoint.y, mouse.gridX, mouse.gridY);
+              finalSegment.forEach(p => finalPath.add(`${p.x},${p.y}`));
+         } else if (mouse.buildPath.length === 1) { // Handle single click build
+             finalPath.add(`${mouse.gridX},${mouse.gridY}`);
+         }
+
+
+        buildRoadFromPath(Array.from(finalPath).map(k => {
+            const [x,y] = k.split(',');
+            return {x: parseInt(x), y: parseInt(y)};
+        }));
+    } else if (!wasDragging) {
+        const { gridX, gridY } = mouse;
+        switch(gameState.activeTool) {
+            case 'upgrade': upgradeRoad(gridX, gridY); break; 
+            case 'demolish': demolish(gridX, gridY); break;
+            case 'select': selectObject(gridX, gridY); break; 
+            case 'service': buildServiceBuilding(gridX, gridY, 'rest_stop'); break;
+            case 'toll': buildTollBooth(gridX, gridY); break; 
+            case 'maintenance': buildServiceBuilding(gridX, gridY, 'maintenance_depot'); break;
+            case 'bus_depot': buildServiceBuilding(gridX, gridY, 'bus_depot'); break;
+            case 'research_center': buildServiceBuilding(gridX, gridY, 'research_center'); break;
+            case 'park': buildServiceBuilding(gridX, gridY, 'park'); break;
+            case 'warehouse': buildServiceBuilding(gridX, gridY, 'warehouse'); break;
+        }
+    }
+    mouse.buildPath = [];
+}
+function onMouseMove(e) {
+    const worldCoords = screenToWorld(e.clientX, e.clientY);
+    mouse.x = worldCoords.x; 
+    mouse.y = worldCoords.y; 
+    const newGridX = Math.floor(mouse.x / TILE_SIZE);
+    const newGridY = Math.floor(mouse.y / TILE_SIZE);
+
+    if (mouse.down) {
+        if (!mouse.dragging && (Math.abs(e.clientX - mouse.startDrag.x) > 5 || Math.abs(e.clientY - mouse.startDrag.y) > 5)) {
+            mouse.dragging = true;
+        }
+        if (gameState.activeTool === 'road' && mouse.dragging) {
+             const lastPoint = mouse.buildPath[mouse.buildPath.length - 1];
+             // Add intermediate points if mouse moved significantly between frames
+             if (Math.abs(newGridX - lastPoint.x) > 1 || Math.abs(newGridY - lastPoint.y) > 1) {
+                  const newPoints = getLinePoints(lastPoint.x, lastPoint.y, newGridX, newGridY);
+                 newPoints.slice(1).forEach(p => mouse.buildPath.push(p));
+             } else if (newGridX !== lastPoint.x || newGridY !== lastPoint.y) {
+                 mouse.buildPath.push({x: newGridX, y: newGridY}); // Add single next step
+             }
+        } else if (mouse.dragging) {
+            camera.x -= (e.clientX - mouse.startDrag.x) / camera.zoom; 
+            camera.y -= (e.clientY - mouse.startDrag.y) / camera.zoom; 
+            mouse.startDrag.x = e.clientX; 
+            mouse.startDrag.y = e.clientY; 
+        }
+    }
+    mouse.gridX = newGridX;
+    mouse.gridY = newGridY;
+}
+function onWheel(e) {
+    e.preventDefault(); const zoomIntensity = 0.1, wheel = e.deltaY < 0 ? 1 : -1, zoom = Math.exp(wheel * zoomIntensity);
+    const oldZoom = camera.zoom; camera.zoom = Math.max(0.2, Math.min(3, camera.zoom * zoom));
+    const worldPos = screenToWorld(e.clientX, e.clientY);
+    camera.x = worldPos.x - (worldPos.x - camera.x) * (oldZoom / camera.zoom); camera.y = worldPos.y - (worldPos.y - camera.y) * (oldZoom / camera.zoom);
+}
+function onToolSelect(e) {
+    const button = e.target.closest('.btn-tool');
+    if (button && !button.disabled) { gameState.activeTool = button.dataset.tool; document.querySelectorAll('#toolbar .btn-tool').forEach(b => b.classList.remove('active')); button.classList.add('active'); infoPanelEl.classList.add('hidden'); }
+}
+function onKeyDown(e) {
+    const keyMap = { 'q': 'select', 'w': 'road', 'e': 'upgrade', 't': 'demolish', 'b': 'service', 'y': 'toll', 'm': 'maintenance', 'u': 'bus_depot', 'i': 'research_center', 'p': 'park', 'k': 'warehouse' };
+    if (keyMap[e.key]) { const btn = document.querySelector(`.btn-tool[data-tool="${keyMap[e.key]}"]`); if (btn && !btn.disabled) btn.click(); }
+    if (e.key === ' ') { e.preventDefault(); togglePause(); }
+}
+
+// --- CONTRACTS & TECH TREE ---
+function generateContract() {
+    const unconnected = gameState.districts.filter(d => !d.facility && !d.connectionCandidates.some(c => getRoadTile(c)?.connected)); // Exclude facilities
+    const connected = gameState.districts.filter(d => !d.facility && d.connectionCandidates.some(c => getRoadTile(c)?.connected));
+    if (unconnected.length < 1 || connected.length < 1) return;
+    const districtB = unconnected[Math.floor(Math.random() * unconnected.length)];
+    gameState.activeContract = { type: 'connect', districtB_id: districtB.id, reward: 20000, timeLeft: 120, districtB_type: districtB.type };
+    updateContractUI();
+}
+function checkContractCompletion() {
+    const c = gameState.activeContract; if (!c || c.type !== 'connect') return;
+    const districtB = gameState.districts.find(d => d.id === c.districtB_id);
+     // Add checks for road existence
+    if (districtB && districtB.connectionCandidates.some(key => getRoadTile(key)?.connected)) { 
+        showNotification("Contract Complete!", `+${formatCurrency(c.reward)}`, "success");
+        gameState.money += c.reward; gameState.activeContract = null; updateContractUI();
+    }
+}
+function updateContractUI() {
+    if (gameState.activeContract) {
+        const c = gameState.activeContract, minutes = Math.floor(c.timeLeft / 60), seconds = Math.floor(c.timeLeft % 60).toString().padStart(2, '0');
+        contractContentEl.innerHTML = `<p>Connect the new <strong>${c.districtB_type}</strong> district.</p><p><strong>Reward:</strong> ${formatCurrency(c.reward)}</p><p><strong>Time Left:</strong> ${minutes}:${seconds}</p>`;
+        contractPanelEl.classList.remove('hidden');
+    } else { contractPanelEl.classList.add('hidden'); }
+}
+function openResearchPanel() {
+    if (!gameState.paused) togglePause();
+    researchPointsEl.textContent = `${Math.floor(gameState.researchPoints)} RP`;
+    researchModalContentEl.innerHTML = '';
+    for (const techId in gameState.techTree) {
+        const tech = gameState.techTree[techId];
+        const card = document.createElement('div');
+        const requirementsMet = tech.requires.every(req => gameState.techTree[req].unlocked);
+        let status = 'locked';
+        if (tech.unlocked) status = 'unlocked';
+        else if (requirementsMet && gameState.researchPoints >= tech.cost) status = 'researchable';
+        card.className = `tech-card p-3 rounded-lg cursor-pointer ${status}`;
+        card.innerHTML = `<h4 class="font-bold">${tech.name}</h4><p class="text-xs">${tech.description}</p><p class="text-sm font-semibold mt-2">${tech.unlocked ? 'Unlocked' : `${tech.cost} RP`}</p>`;
+        if (status === 'researchable') card.onclick = () => researchTech(techId);
+        researchModalContentEl.appendChild(card);
+    }
+    showModal(researchModalOverlayEl);
+}
+function researchTech(techId) {
+    const tech = gameState.techTree[techId];
+    if (!tech.unlocked && gameState.researchPoints >= tech.cost && tech.requires.every(req => gameState.techTree[req].unlocked)) {
+        gameState.researchPoints -= tech.cost;
+        tech.unlocked = true;
+
+        if (techId === 'upgrade_4_lanes') {
+            for (const key in gameState.grid) {
+                const road = gameState.grid[key];
+                if (road.lanes < 4) {
+                    road.lanes = 4;
+                    road.capacity = 4 * ROAD_CAPACITY_PER_LANE;
+                }
+            }
+             showNotification('Network Upgraded!', 'All existing highways are now 4 lanes.', 'success');
+        }
+        
+        updateToolbarAvailability();
+        openResearchPanel(); // Refresh panel
+    }
+}
+function updateToolbarAvailability() {
+    document.querySelector('[data-tool="upgrade"]').disabled = !gameState.techTree.advanced_roadworks.unlocked;
+    document.querySelector('[data-tool="service"]').disabled = !gameState.techTree.service_areas.unlocked;
+    document.querySelector('[data-tool="toll"]').disabled = !gameState.techTree.toll_booths.unlocked;
+    document.querySelector('[data-tool="maintenance"]').disabled = !gameState.techTree.maintenance.unlocked;
+    document.querySelector('[data-tool="bus_depot"]').disabled = !gameState.techTree.public_transit.unlocked;
+    document.querySelector('[data-tool="research_center"]').disabled = !gameState.techTree.research_center.unlocked;
+    document.querySelector('[data-tool="park"]').disabled = !gameState.techTree.civic_planning.unlocked;
+    document.querySelector('[data-tool="warehouse"]').disabled = !gameState.techTree.logistics_hub.unlocked;
+}
+
+// --- UI & FEEDBACK ---
+function resizeCanvas() { canvas.width = window.innerWidth; canvas.height = window.innerHeight; }
+function updateUI() {
+    moneyEl.textContent = formatCurrency(gameState.money);
+    efficiencyEl.textContent = `${gameState.efficiency.toFixed(0)}%`;
+    vehicleCountEl.textContent = gameState.vehicles.length;
+}
+function formatCurrency(amount) { return new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD', minimumFractionDigits: 0 }).format(amount); }
+function selectObject(gridX, gridY) {
+    const key = `${gridX},${gridY}`;
+    const warehouse = gameState.warehouses[key];
+    const park = gameState.parks[key];
+    const researchCenter = gameState.researchCenters[key];
+    const busDepot = gameState.busDepots[key];
+    const maintenanceDepot = gameState.maintenanceDepots[key];
+    const tollBooth = gameState.tollBooths[key];
+    const road = getRoadTile(key);
+    const restStop = gameState.serviceBuildings[key];
+    const district = gameState.districts.find(d => gridX >= d.x && gridX < d.x + d.width && gridY >= d.y && gridY < d.y + d.height);
+
+    if (park) { infoTitleEl.textContent = "Park"; infoContentEl.innerHTML = `<p>Increases happiness in the surrounding district, boosting income.</p>`; }
+    else if (researchCenter) { infoTitleEl.textContent = "Research Center"; infoContentEl.innerHTML = `<p>Generates Research Points over time.</p>`; }
+    else if (busDepot) { infoTitleEl.textContent = "Bus Depot"; infoContentEl.innerHTML = `<p>Spawns buses to reduce car traffic across the network.</p>`; }
+    else if (maintenanceDepot) { infoTitleEl.textContent = "Maintenance Depot"; infoContentEl.innerHTML = `<p>Improves overall network efficiency and reduces accident duration.</p>`; }
+    else if (tollBooth) { infoTitleEl.textContent = "Toll Booth"; infoContentEl.innerHTML = `<p>Slows traffic but generates ${formatCurrency(INCOME.TOLL)} per vehicle.</p><p><strong>Lifetime Earnings:</strong> ${formatCurrency(tollBooth.lifetimeEarnings || 0)}</p>`; }
+    else if (warehouse) { infoTitleEl.textContent = "Warehouse"; infoContentEl.innerHTML = `<p>Acts as a hub for trucks, increasing delivery income.</p>`; }
+    else if (road) { 
+        infoTitleEl.textContent = gameState.grid[key] ? "Highway Segment" : "District Road"; 
+        let vehiclesOnSegment = gameState.vehicles.filter(v => v.currentSegmentKey === key);
+        let carCount = vehiclesOnSegment.filter(v => v.type === 'car').length;
+        let truckCount = vehiclesOnSegment.filter(v => v.type === 'truck').length;
+        let busCount = vehiclesOnSegment.filter(v => v.type === 'bus').length;
+        let touristCount = vehiclesOnSegment.filter(v => v.type === 'tourist').length;
+        infoContentEl.innerHTML = `<p><strong>Lanes:</strong> ${road.lanes}</p><p><strong>Usage:</strong> ${road.vehicleCount} / ${road.capacity}</p><div class="mt-2 border-t border-gray-600 pt-2"><p><strong>Cars:</strong> ${carCount}</p><p><strong>Trucks:</strong> ${truckCount}</p><p><strong>Buses:</strong> ${busCount}</p><p><strong>Tourists:</strong> ${touristCount}</p></div>`; 
+    }
+    else if (restStop) { infoTitleEl.textContent = "Rest Stop"; infoContentEl.innerHTML = `<p>A place for drivers to rest, generating income.</p><p><strong>Lifetime Earnings:</strong> ${formatCurrency(restStop.lifetimeEarnings || 0)}</p>`; } // Fixed earnings display
+    else if (district) { 
+        infoTitleEl.textContent = `${district.type.charAt(0).toUpperCase() + district.type.slice(1)} District`; 
+        let facilityText = district.facility ? ` (${district.facility.charAt(0).toUpperCase() + district.facility.slice(1)})` : '';
+        let specializationText = district.specialization ? district.specialization.replace('_', ' ').replace(/\b\w/g, l => l.toUpperCase()) : 'None';
+        let xpToNextLevel = XP_FOR_LEVEL_UP(district.level);
+        infoContentEl.innerHTML = `<p><strong>Level:</strong> ${district.level}${facilityText}</p><p><strong>XP:</strong> ${Math.floor(district.xp)} / ${xpToNextLevel}</p><p><strong>Happiness:</strong> ${(district.happiness * 100).toFixed(0)}%</p><p><strong>Specialization:</strong> ${specializationText}</p>`; 
+    } else {
+        infoPanelEl.classList.add('hidden'); return;
+    }
+     infoPanelEl.classList.remove('hidden');
+}
+function showNotification(title, message, type = 'info', id = null) {
+    const notificationArea = document.getElementById('notification-area');
+    if (id) {
+        const existing = document.getElementById(id);
+        if (existing) { existing.innerHTML = `<h4 class="font-bold">${title}</h4><p class="text-sm">${message}</p>`; return existing; }
+    }
+    const notif = document.createElement('div');
+    if(id) notif.id = id;
+    notif.className = `notification p-3 rounded-lg shadow-lg text-white bg-${type === 'info' ? 'blue' : type === 'success' ? 'green' : 'red'}-500 mb-2`;
+    notif.innerHTML = `<h4 class="font-bold">${title}</h4><p class="text-sm">${message}</p>`;
+    notificationArea.prepend(notif);
+    if(!id) { setTimeout(() => { notif.style.transition = 'opacity 0.5s ease, transform 0.5s ease'; notif.style.opacity = '0'; notif.style.transform = 'translateX(-100%)'; setTimeout(() => notif.remove(), 500); }, 4000); }
+    return notif;
+}
+function handleBatchedNotifications() {
+    if (gameState.batchedIncome > 0 && gameState.gameTime > gameState.lastIncomeNotificationTime + 3) {
+        const notifId = 'income-notification';
+        showNotification("Income", `+${formatCurrency(gameState.batchedIncome)} from trips`, 'success', notifId);
+        gameState.batchedIncome = 0; gameState.lastIncomeNotificationTime = gameState.gameTime;
+        setTimeout(() => { const el = document.getElementById(notifId); if(el) { el.style.transition = 'opacity 0.5s ease, transform 0.5s ease'; el.style.opacity = '0'; el.style.transform = 'translateX(-100%)'; setTimeout(() => el.remove(), 500); } }, 2000);
+    }
+}
+function createFloatingText(text, wx, wy) {
+    const container = document.getElementById('floating-text-container');
+    const textEl = document.createElement('div');
+    const screenPos = worldToScreen(wx, wy);
+    textEl.className = 'floating-text'; textEl.textContent = text;
+    textEl.style.left = `${screenPos.x}px`; textEl.style.top = `${screenPos.y}px`;
+    container.appendChild(textEl);
+    setTimeout(() => textEl.remove(), 1500);
+}
+function togglePause() {
+    gameState.paused = !gameState.paused;
+    document.getElementById('pause-button').textContent = gameState.paused ? 'Resume' : 'Pause';
+    if (gameState.paused && !gameState.gameOver) showModal(modalOverlayEl, "Game Paused", "The simulation is paused. Press Resume or the spacebar to continue.");
+    else if (!gameState.gameOver) hideModal(modalOverlayEl);
+}
+function showHelp() {
+    if (!gameState.paused) togglePause();
+    const helpText = `<p class="mb-2"><strong>Goal:</strong> Connect districts to create a profitable highway network.</p><p class="mb-2"><strong>Core Mechanics:</strong></p><ul class="list-disc list-inside space-y-2"><li><strong>Research:</strong> Earn Research Points (RP) to unlock new tools and buildings.</li><li><strong>Build Roads (W):</strong> Connect the bright border roads of districts.</li><li><strong>Events:</strong> Watch out for Rush Hour and Accidents!</li><li><strong>Contracts:</strong> Complete timed objectives for big cash rewards (unlockable via Research).</li></ul>`;
+    showModal(modalOverlayEl, "How to Play", helpText);
+}
+function gameOver(reason) { gameState.gameOver = true; gameState.paused = true; showModal(modalOverlayEl, "Game Over", `${reason}<br><br>Refresh the page to try again.`); }
+function showModal(modal, title, content) {
+    const modalTitle = modal.querySelector('h2');
+    const modalContent = modal.querySelector('div[id$="-content"]');
+    if (title) modalTitle.textContent = title;
+    if (content) modalContent.innerHTML = content;
+    modal.classList.remove('hidden');
+    setTimeout(() => modal.children[0].classList.remove('scale-95', 'opacity-0'), 10);
+}
+function hideModal(modal) {
+    modal.children[0].classList.add('scale-95', 'opacity-0');
+    setTimeout(() => modal.classList.add('hidden'), 200);
+}
+
+// --- DISTRICT SPECIALIZATION ---
+function checkDistrictLevelUps() {
+    for (const district of gameState.districts) {
+        if (district.specialization || district.facility) continue; // Facilities prevent specialization
+        const xpNeeded = XP_FOR_LEVEL_UP(district.level);
+        if (district.xp >= xpNeeded) {
+            district.level++;
+            district.xp -= xpNeeded;
+            promptSpecialization(district);
+        }
+    }
+}
+function promptSpecialization(district) {
+    if (!gameState.paused) togglePause();
+    const sub = document.getElementById('specialization-modal-subtitle');
+    const content = document.getElementById('specialization-modal-content');
+    sub.textContent = `Your ${district.type} district has reached Level ${district.level}! Choose a specialization:`;
+    content.innerHTML = '';
+    
+    let options = [];
+    switch (district.type) {
+        case 'residential':
+            options = [
+                { id: 'high_density', name: 'High-Density Housing', desc: 'Spawns 1.5x more cars. -5% happiness.' },
+                { id: 'suburban', name: 'Suburban Bliss', desc: 'Spawns 0.7x cars. +10% happiness.' }
+            ];
+            break;
+        case 'commercial':
+            options = [
+                { id: 'financial', name: 'Financial District', desc: 'Trips ending here are worth 50% more.' },
+                { id: 'retail', name: 'Retail Hub', desc: 'Doubles the chance of shopping trips.' }
+            ];
+            break;
+        case 'industrial':
+            options = [
+                { id: 'manufacturing', name: 'Manufacturing Plant', desc: 'Spawns 1.5x more trucks. Causes unhappiness in nearby residential districts.' },
+                { id: 'logistics', name: 'Logistics Center', desc: 'Trucks from here are 50% faster.' }
+            ];
+            break;
+    }
+
+    options.forEach(opt => {
+        const card = document.createElement('div');
+        card.className = 'specialization-card p-4 rounded-lg cursor-pointer';
+        card.innerHTML = `<h4 class="font-bold text-lg">${opt.name}</h4><p class="text-sm">${opt.desc}</p>`;
+        card.onclick = () => selectSpecialization(district, opt.id);
+        content.appendChild(card);
+    });
+
+    showModal(specializationModalOverlayEl);
+}
+
+function selectSpecialization(district, specId) {
+    district.specialization = specId;
+
+    if (specId === 'suburban') district.happiness += 0.10;
+    if (specId === 'high_density') district.happiness -= 0.05;
+
+    if (specId === 'manufacturing') {
+        applyFactoryUnhappiness(district); // Apply unhappiness effect
+    }
+
+    hideModal(specializationModalOverlayEl);
+    if (gameState.paused) togglePause();
+}
+
+
+// --- START THE GAME ---
+init();
+</script>
+</body>
+</html>

@@ -1,0 +1,1094 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>Sky Commander: Tactical Strike</title>
+    <style>
+        :root {
+            --bg-color: #050a0f;
+            --grid-color: rgba(0, 255, 255, 0.1);
+            --ui-bg: rgba(10, 20, 30, 0.85);
+            --ui-border: #00f0ff;
+            --text-color: #00f0ff;
+            --enemy-color: #ff2a2a;
+            --neutral-color: #aaaaaa;
+        }
+
+        body, html {
+            margin: 0;
+            padding: 0;
+            width: 100%;
+            height: 100%;
+            background-color: var(--bg-color);
+            overflow: hidden;
+            font-family: 'Courier New', Courier, monospace;
+            user-select: none;
+            -webkit-user-select: none;
+        }
+
+        #game-canvas {
+            display: block;
+            position: absolute;
+            top: 0;
+            left: 0;
+        }
+
+        /* UI Overlay */
+        #ui-layer {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            pointer-events: none; /* Let clicks pass through to canvas */
+        }
+
+        /* HUD Elements */
+        .hud-panel {
+            position: absolute;
+            background: var(--ui-bg);
+            border: 1px solid var(--ui-border);
+            padding: 10px;
+            pointer-events: auto;
+            border-radius: 4px;
+            box-shadow: 0 0 10px rgba(0, 240, 255, 0.2);
+        }
+
+        #resources-panel {
+            top: 20px;
+            left: 20px;
+            color: var(--text-color);
+            font-weight: bold;
+            font-size: 18px;
+        }
+
+        .resource-rate {
+            font-size: 12px;
+            opacity: 0.7;
+            margin-left: 10px;
+        }
+
+        #controls-panel {
+            bottom: 20px;
+            left: 50%;
+            transform: translateX(-50%);
+            display: flex;
+            gap: 10px;
+        }
+
+        #minimap-panel {
+            bottom: 20px;
+            right: 20px;
+            width: 150px;
+            height: 150px;
+            background: #000;
+            border: 1px solid var(--text-color);
+            opacity: 0.8;
+            display: none; /* Hidden for MVP simplicity */
+        }
+
+        #game-over-screen {
+            display: none;
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background: rgba(0, 0, 0, 0.8);
+            justify-content: center;
+            align-items: center;
+            flex-direction: column;
+            pointer-events: auto;
+            z-index: 100;
+        }
+
+        h1 {
+            color: white;
+            font-size: 40px;
+            margin-bottom: 20px;
+            text-shadow: 0 0 10px var(--text-color);
+        }
+
+        button {
+            background: rgba(0, 50, 70, 0.8);
+            border: 1px solid var(--text-color);
+            color: var(--text-color);
+            padding: 10px 20px;
+            font-family: inherit;
+            font-weight: bold;
+            cursor: pointer;
+            transition: all 0.2s;
+            text-transform: uppercase;
+            font-size: 14px;
+            min-width: 120px;
+        }
+
+        button:hover {
+            background: var(--text-color);
+            color: #000;
+        }
+
+        button:disabled {
+            border-color: #555;
+            color: #555;
+            cursor: not-allowed;
+            background: rgba(20, 20, 20, 0.8);
+        }
+
+        .unit-cost {
+            display: block;
+            font-size: 10px;
+            margin-top: 4px;
+            opacity: 0.8;
+        }
+
+        /* CRT Effect */
+        .scanline {
+            width: 100%;
+            height: 100%;
+            z-index: 10;
+            background: linear-gradient(0deg, rgba(0,0,0,0) 50%, rgba(0, 255, 255, 0.02) 50%);
+            background-size: 100% 4px;
+            position: absolute;
+            pointer-events: none;
+        }
+    </style>
+</head>
+<body>
+
+    <div class="scanline"></div>
+    <canvas id="game-canvas"></canvas>
+
+    <div id="ui-layer">
+        <div id="resources-panel" class="hud-panel">
+            SUPPLY: <span id="supply-display">0</span>
+            <span id="supply-rate-display" class="resource-rate">(+1.0/sec)</span>
+        </div>
+
+        <div id="controls-panel" class="hud-panel">
+            <button id="btn-fighter" onclick="game.buildUnit('fighter')">
+                Interceptor
+                <span class="unit-cost">50 Supply</span>
+            </button>
+            <button id="btn-bomber" onclick="game.buildUnit('bomber')">
+                Striker
+                <span class="unit-cost">120 Supply</span>
+            </button>
+        </div>
+
+        <div id="game-over-screen">
+            <h1 id="game-over-title">MISSION ACCOMPLISHED</h1>
+            <button onclick="location.reload()">Re-Deploy</button>
+        </div>
+    </div>
+
+    <script>
+        /**
+         * UTILITIES
+         */
+        const Vec2 = {
+            add: (v1, v2) => ({ x: v1.x + v2.x, y: v1.y + v2.y }),
+            sub: (v1, v2) => ({ x: v1.x - v2.x, y: v1.y - v2.y }),
+            mult: (v, s) => ({ x: v.x * s, y: v.y * s }),
+            mag: (v) => Math.sqrt(v.x * v.x + v.y * v.y),
+            norm: (v) => {
+                const m = Math.sqrt(v.x * v.x + v.y * v.y);
+                return m === 0 ? { x: 0, y: 0 } : { x: v.x / m, y: v.y / m };
+            },
+            dist: (v1, v2) => Math.sqrt((v1.x - v2.x) ** 2 + (v1.y - v2.y) ** 2),
+            angle: (v) => Math.atan2(v.y, v.x)
+        };
+
+        const randomRange = (min, max) => Math.random() * (max - min) + min;
+
+        /**
+         * GAME CONFIG
+         */
+        const CONFIG = {
+            PLAYER_COLOR: '#00f0ff',
+            ENEMY_COLOR: '#ff2a2a',
+            NEUTRAL_COLOR: '#aaaaaa',
+            FPS: 60,
+            SUPPLY_RATE: 0.5, // Base rate reduced, capture points give more
+            CAPTURE_RATE: 0.5,
+            UNIT_STATS: {
+                fighter: { cost: 50, hp: 60, speed: 4, turnSpeed: 0.1, range: 150, damage: 5, reload: 20, type: 'air', size: 8 },
+                bomber: { cost: 120, hp: 200, speed: 2, turnSpeed: 0.04, range: 200, damage: 40, reload: 60, type: 'ground', size: 12 },
+                base: { cost: 0, hp: 2000, size: 40 },
+                point: { cost: 0, hp: 500, size: 20 }
+            }
+        };
+
+        /**
+         * CLASSES
+         */
+
+        class Entity {
+            constructor(x, y, team) {
+                this.pos = { x, y };
+                this.vel = { x: 0, y: 0 };
+                this.team = team; // 'player', 'enemy', 'neutral'
+                this.dead = false;
+                this.radius = 10;
+                this.hp = 100;
+                this.maxHp = 100;
+                this.angle = 0; // Radians
+            }
+
+            update() {}
+            
+            draw(ctx) {
+                // Default debug draw
+                ctx.fillStyle = this.team === 'player' ? CONFIG.PLAYER_COLOR : CONFIG.ENEMY_COLOR;
+                ctx.beginPath();
+                ctx.arc(this.pos.x, this.pos.y, this.radius, 0, Math.PI * 2);
+                ctx.fill();
+            }
+
+            takeDamage(amount) {
+                this.hp -= amount;
+                if (this.hp <= 0) {
+                    this.hp = 0;
+                    this.dead = true;
+                    game.addExplosion(this.pos.x, this.pos.y, this.radius * 2);
+                }
+            }
+        }
+
+        class CapturePoint extends Entity {
+            constructor(x, y) {
+                super(x, y, 'neutral');
+                this.radius = 25;
+                this.captureProgress = 0; // -100 (Enemy) to 100 (Player)
+                this.owner = 'neutral';
+                this.hp = 9999; // Indestructible
+            }
+
+            update(units) {
+                let playerScore = 0;
+                let enemyScore = 0;
+
+                // Check units inside radius
+                units.forEach(u => {
+                    if (Vec2.dist(this.pos, u.pos) < this.radius * 2.5) {
+                        if (u.team === 'player') playerScore++;
+                        if (u.team === 'enemy') enemyScore++;
+                    }
+                });
+
+                // Adjust progress
+                if (playerScore > enemyScore) {
+                    this.captureProgress += CONFIG.CAPTURE_RATE;
+                } else if (enemyScore > playerScore) {
+                    this.captureProgress -= CONFIG.CAPTURE_RATE;
+                } else if (playerScore === 0 && enemyScore === 0) {
+                    // Decay to neutral if abandoned and not fully captured
+                    if (this.owner === 'neutral') {
+                        if (this.captureProgress > 0) this.captureProgress -= 0.1;
+                        if (this.captureProgress < 0) this.captureProgress += 0.1;
+                    }
+                }
+
+                // Clamp
+                if (this.captureProgress > 100) this.captureProgress = 100;
+                if (this.captureProgress < -100) this.captureProgress = -100;
+
+                // Determine Owner
+                if (this.captureProgress >= 100) this.owner = 'player';
+                else if (this.captureProgress <= -100) this.owner = 'enemy';
+                else this.owner = 'neutral';
+
+                this.team = this.owner;
+            }
+
+            draw(ctx) {
+                // Color based on progress
+                let color = CONFIG.NEUTRAL_COLOR;
+                if (this.captureProgress > 30) color = CONFIG.PLAYER_COLOR;
+                if (this.captureProgress < -30) color = CONFIG.ENEMY_COLOR;
+
+                ctx.save();
+                ctx.translate(this.pos.x, this.pos.y);
+                
+                // Pulsing effect
+                const pulse = 1 + Math.sin(Date.now() / 200) * 0.1;
+                
+                // Capture Ring
+                ctx.strokeStyle = '#555';
+                ctx.lineWidth = 2;
+                ctx.beginPath();
+                ctx.arc(0, 0, this.radius + 5, 0, Math.PI * 2);
+                ctx.stroke();
+
+                // Progress Arc
+                ctx.strokeStyle = color;
+                ctx.lineWidth = 4;
+                ctx.beginPath();
+                // Map -100..100 to angle
+                const angle = (this.captureProgress / 100) * Math.PI;
+                ctx.arc(0, 0, this.radius + 5, -Math.PI/2, -Math.PI/2 + angle, this.captureProgress < 0);
+                ctx.stroke();
+
+                // Base Icon (Diamond)
+                ctx.fillStyle = color;
+                ctx.shadowBlur = 10;
+                ctx.shadowColor = color;
+                ctx.scale(pulse, pulse);
+                ctx.beginPath();
+                ctx.moveTo(0, -15);
+                ctx.lineTo(15, 0);
+                ctx.lineTo(0, 15);
+                ctx.lineTo(-15, 0);
+                ctx.closePath();
+                ctx.fill();
+
+                // Label
+                ctx.scale(1/pulse, 1/pulse); // Reset scale for text
+                ctx.fillStyle = '#fff';
+                ctx.font = '10px Courier New';
+                ctx.textAlign = 'center';
+                ctx.fillText('RADAR', 0, 25);
+
+                ctx.restore();
+            }
+        }
+
+        class Building extends Entity {
+            constructor(x, y, team) {
+                super(x, y, team);
+                this.hp = CONFIG.UNIT_STATS.base.hp;
+                this.maxHp = this.hp;
+                this.radius = CONFIG.UNIT_STATS.base.size;
+            }
+
+            draw(ctx) {
+                const color = this.team === 'player' ? CONFIG.PLAYER_COLOR : CONFIG.ENEMY_COLOR;
+                
+                // Base Glow
+                ctx.shadowBlur = 20;
+                ctx.shadowColor = color;
+
+                ctx.strokeStyle = color;
+                ctx.lineWidth = 3;
+                
+                // Hexagon shape
+                ctx.beginPath();
+                for (let i = 0; i < 6; i++) {
+                    const angle = (Math.PI / 3) * i;
+                    const bx = this.pos.x + this.radius * Math.cos(angle);
+                    const by = this.pos.y + this.radius * Math.sin(angle);
+                    if (i === 0) ctx.moveTo(bx, by);
+                    else ctx.lineTo(bx, by);
+                }
+                ctx.closePath();
+                ctx.stroke();
+
+                // Inner detail
+                ctx.fillStyle = color;
+                ctx.beginPath();
+                ctx.arc(this.pos.x, this.pos.y, this.radius * 0.4, 0, Math.PI * 2);
+                ctx.fill();
+
+                // Reset shadow
+                ctx.shadowBlur = 0;
+
+                // Health Bar
+                drawHealthBar(ctx, this.pos.x, this.pos.y - this.radius - 15, this.hp, this.maxHp, this.radius * 2);
+            }
+        }
+
+        class Unit extends Entity {
+            constructor(x, y, team, type) {
+                super(x, y, team);
+                this.type = type; // 'fighter' or 'bomber'
+                const stats = CONFIG.UNIT_STATS[type];
+                
+                this.hp = stats.hp;
+                this.maxHp = stats.hp;
+                this.speed = stats.speed;
+                this.turnSpeed = stats.turnSpeed;
+                this.range = stats.range;
+                this.damage = stats.damage;
+                this.reloadTime = stats.reload;
+                this.reloadTimer = 0;
+                this.radius = stats.size;
+                
+                this.target = null; // Entity to attack
+                this.moveTarget = null; // Coordinates {x, y} to move to
+                this.state = 'idle'; // idle, moving, engaging
+            }
+
+            update(enemies, capturePoints) {
+                if (this.dead) return;
+
+                // Reload weapon
+                if (this.reloadTimer > 0) this.reloadTimer--;
+
+                // 1. Acquire Target Logic (if no move command overriding)
+                if (!this.moveTarget && (!this.target || this.target.dead)) {
+                    // Smart Targeting: Prioritize uncaptured points if idle, then enemies
+                    // Only prioritize points if we aren't already fighting
+                    this.target = this.findBestTarget(enemies, capturePoints);
+                }
+
+                // 2. Movement Logic
+                let dest = null;
+
+                if (this.moveTarget) {
+                    dest = this.moveTarget;
+                    // Check if reached move target
+                    if (Vec2.dist(this.pos, dest) < 50) {
+                        this.moveTarget = null; // Arrived
+                    }
+                } else if (this.target) {
+                    dest = this.target.pos;
+                    // Combat range check
+                    let range = this.range * 0.8;
+                    // If target is a capture point, we need to sit ON it, not shoot it
+                    if (this.target instanceof CapturePoint) {
+                         range = 10; 
+                    }
+                    
+                    if (Vec2.dist(this.pos, dest) < range) {
+                        // In range
+                    }
+                } else {
+                    // Patrol / Circle
+                    const time = Date.now() * 0.001;
+                    dest = {
+                        x: this.pos.x + Math.cos(time + this.pos.y) * 100,
+                        y: this.pos.y + Math.sin(time + this.pos.x) * 100
+                    };
+                }
+
+                // Flight Physics (Steering)
+                const dx = dest.x - this.pos.x;
+                const dy = dest.y - this.pos.y;
+                const desiredAngle = Math.atan2(dy, dx);
+                
+                // Smooth turning
+                let diff = desiredAngle - this.angle;
+                while (diff < -Math.PI) diff += Math.PI * 2;
+                while (diff > Math.PI) diff -= Math.PI * 2;
+                
+                if (Math.abs(diff) < this.turnSpeed) {
+                    this.angle = desiredAngle;
+                } else {
+                    this.angle += Math.sign(diff) * this.turnSpeed;
+                }
+
+                // Apply Velocity
+                this.vel.x = Math.cos(this.angle) * this.speed;
+                this.vel.y = Math.sin(this.angle) * this.speed;
+
+                this.pos.x += this.vel.x;
+                this.pos.y += this.vel.y;
+
+                // Wall bounds (bounce soft)
+                if (this.pos.x < 0 || this.pos.x > canvas.width || this.pos.y < 0 || this.pos.y > canvas.height) {
+                    this.angle += Math.PI; // Turn around
+                }
+
+                // 3. Attack Logic
+                if (this.target && !this.target.dead && this.reloadTimer <= 0) {
+                    if (this.target instanceof CapturePoint) return; // Don't fire at capture points
+
+                    const dist = Vec2.dist(this.pos, this.target.pos);
+                    // Angle check (must be roughly facing target to fire)
+                    const angleToTarget = Math.atan2(this.target.pos.y - this.pos.y, this.target.pos.x - this.pos.x);
+                    let aimDiff = angleToTarget - this.angle;
+                    while (aimDiff < -Math.PI) aimDiff += Math.PI * 2;
+                    while (aimDiff > Math.PI) aimDiff -= Math.PI * 2;
+
+                    if (dist < this.range && Math.abs(aimDiff) < 0.5) {
+                        this.fire(this.target);
+                        this.reloadTimer = this.reloadTime;
+                    }
+                }
+            }
+
+            findBestTarget(enemies, capturePoints) {
+                let best = null;
+                let minDist = 99999;
+
+                // 1. Check for immediate threats (Self defense)
+                for (const e of enemies) {
+                    if (e.dead) continue;
+                    const d = Vec2.dist(this.pos, e.pos);
+                    if (d < this.range && d < minDist) {
+                        return e; // Engage immediately if in range
+                    }
+                }
+
+                // 2. If no immediate threat, look for objectives (AI / Idle logic)
+                if (capturePoints && this.team === 'enemy') { // Only AI auto-targets points to simulate strategy
+                     for (const p of capturePoints) {
+                        // AI wants points that aren't fully theirs
+                        if (p.owner !== this.team) {
+                            const d = Vec2.dist(this.pos, p.pos);
+                            if (d < minDist) {
+                                minDist = d;
+                                best = p;
+                            }
+                        }
+                    }
+                }
+                
+                if (best) return best;
+
+                // 3. Look for general enemies
+                minDist = 99999;
+                for (const e of enemies) {
+                    if (e.dead) continue;
+                    
+                    // Priority logic
+                    // Fighters prefer fighters, Bombers prefer buildings
+                    let score = Vec2.dist(this.pos, e.pos);
+                    
+                    if (this.type === 'bomber' && e instanceof Building) score -= 500; // Bombers love bases
+                    if (this.type === 'fighter' && e instanceof Unit) score -= 300; // Fighters love planes
+
+                    if (score < minDist) {
+                        minDist = score;
+                        best = e;
+                    }
+                }
+                return best;
+            }
+
+            fire(target) {
+                if (target instanceof CapturePoint) return; // Don't shoot radar stations
+                game.projectiles.push(new Projectile(this.pos.x, this.pos.y, target, this.damage, this.team));
+            }
+
+            draw(ctx) {
+                const color = this.team === 'player' ? CONFIG.PLAYER_COLOR : CONFIG.ENEMY_COLOR;
+                ctx.save();
+                ctx.translate(this.pos.x, this.pos.y);
+                ctx.rotate(this.angle);
+
+                // Jet Trail
+                ctx.beginPath();
+                ctx.moveTo(-this.radius, 0);
+                ctx.lineTo(-this.radius * 3, 0);
+                ctx.strokeStyle = `rgba(${this.team === 'player' ? '0,240,255' : '255,42,42'}, 0.5)`;
+                ctx.lineWidth = 2;
+                ctx.stroke();
+
+                // Body
+                ctx.fillStyle = color;
+                ctx.beginPath();
+                if (this.type === 'fighter') {
+                    // Triangle
+                    ctx.moveTo(this.radius, 0);
+                    ctx.lineTo(-this.radius, -this.radius/1.5);
+                    ctx.lineTo(-this.radius/2, 0);
+                    ctx.lineTo(-this.radius, this.radius/1.5);
+                } else {
+                    // Bomber shape (Heavy Triangle)
+                    ctx.moveTo(this.radius, 0);
+                    ctx.lineTo(-this.radius, -this.radius);
+                    ctx.lineTo(-this.radius, this.radius);
+                }
+                ctx.closePath();
+                ctx.fill();
+
+                // Select highlight
+                if (game.input.selectedUnits.includes(this)) {
+                    ctx.strokeStyle = '#fff';
+                    ctx.lineWidth = 1;
+                    ctx.beginPath();
+                    ctx.arc(0, 0, this.radius + 5, 0, Math.PI * 2);
+                    ctx.stroke();
+                }
+
+                ctx.restore();
+
+                // Health bar only if damaged or selected
+                if (this.hp < this.maxHp || game.input.selectedUnits.includes(this)) {
+                   drawHealthBar(ctx, this.pos.x, this.pos.y - 15, this.hp, this.maxHp, 20);
+                }
+            }
+        }
+
+        class Projectile {
+            constructor(x, y, target, damage, team) {
+                this.pos = { x, y };
+                this.target = target; // Homing slightly
+                this.damage = damage;
+                this.team = team;
+                this.speed = 12;
+                this.dead = false;
+                this.life = 100;
+            }
+
+            update() {
+                this.life--;
+                if (this.life <= 0) this.dead = true;
+
+                // Simple homing
+                let angle = 0;
+                if (this.target && !this.target.dead) {
+                    angle = Math.atan2(this.target.pos.y - this.pos.y, this.target.pos.x - this.pos.x);
+                } else {
+                    this.dead = true; // Fizzle if target dead
+                    return;
+                }
+
+                this.pos.x += Math.cos(angle) * this.speed;
+                this.pos.y += Math.sin(angle) * this.speed;
+
+                // Hit detection
+                if (Vec2.dist(this.pos, this.target.pos) < this.target.radius + 5) {
+                    this.target.takeDamage(this.damage);
+                    this.dead = true;
+                    // Small hit spark
+                    game.addExplosion(this.pos.x, this.pos.y, 5);
+                }
+            }
+
+            draw(ctx) {
+                ctx.fillStyle = '#fff';
+                ctx.beginPath();
+                ctx.arc(this.pos.x, this.pos.y, 2, 0, Math.PI * 2);
+                ctx.fill();
+            }
+        }
+
+        class Particle {
+            constructor(x, y, size) {
+                this.pos = { x, y };
+                this.vel = { 
+                    x: (Math.random() - 0.5) * 5, 
+                    y: (Math.random() - 0.5) * 5 
+                };
+                this.life = 1.0;
+                this.decay = Math.random() * 0.05 + 0.02;
+                this.size = size;
+            }
+
+            update() {
+                this.pos.x += this.vel.x;
+                this.pos.y += this.vel.y;
+                this.life -= this.decay;
+            }
+
+            draw(ctx) {
+                ctx.globalAlpha = this.life;
+                ctx.fillStyle = `orange`;
+                ctx.beginPath();
+                ctx.arc(this.pos.x, this.pos.y, this.size * this.life, 0, Math.PI * 2);
+                ctx.fill();
+                ctx.globalAlpha = 1.0;
+            }
+        }
+
+        function drawHealthBar(ctx, x, y, cur, max, width) {
+            const pct = cur / max;
+            ctx.fillStyle = '#333';
+            ctx.fillRect(x - width/2, y, width, 4);
+            ctx.fillStyle = pct > 0.5 ? '#0f0' : (pct > 0.2 ? '#ff0' : '#f00');
+            ctx.fillRect(x - width/2, y, width * pct, 4);
+        }
+
+        /**
+         * GAME ENGINE
+         */
+        const canvas = document.getElementById('game-canvas');
+        const ctx = canvas.getContext('2d');
+
+        class Game {
+            constructor() {
+                this.resize();
+                window.addEventListener('resize', () => this.resize());
+
+                this.playerSupply = 300;
+                this.enemySupply = 300; // AI has resources now
+                this.entities = [];
+                this.projectiles = [];
+                this.particles = [];
+                this.capturePoints = [];
+                
+                // Setup Bases
+                this.playerBase = new Building(100, canvas.height - 100, 'player');
+                this.enemyBase = new Building(canvas.width - 100, 100, 'enemy');
+                
+                this.entities.push(this.playerBase);
+                this.entities.push(this.enemyBase);
+
+                // Setup Capture Points (Radar Stations)
+                this.addCapturePoints();
+
+                this.input = new InputHandler(this);
+                this.lastTime = 0;
+                this.aiTimer = 0;
+                this.supplyTimer = 0;
+                this.gameOver = false;
+                this.waveNumber = 1;
+            }
+
+            addCapturePoints() {
+                // Mid
+                this.capturePoints.push(new CapturePoint(canvas.width/2, canvas.height/2));
+                // Flanks
+                this.capturePoints.push(new CapturePoint(canvas.width * 0.25, canvas.height * 0.3));
+                this.capturePoints.push(new CapturePoint(canvas.width * 0.75, canvas.height * 0.7));
+            }
+
+            resize() {
+                canvas.width = window.innerWidth;
+                canvas.height = window.innerHeight;
+                // Reposition enemy base if resize (simple hack)
+                if(this.enemyBase) {
+                    this.enemyBase.pos.x = canvas.width - 100;
+                    this.enemyBase.pos.y = 100;
+                }
+                if(this.playerBase) {
+                    this.playerBase.pos.y = canvas.height - 100;
+                }
+                // Reset points on massive resize to keep them accessible
+                if (this.capturePoints && this.capturePoints.length > 0) {
+                     this.capturePoints[0].pos = {x: canvas.width/2, y: canvas.height/2};
+                }
+            }
+
+            start() {
+                requestAnimationFrame((t) => this.loop(t));
+            }
+
+            loop(timestamp) {
+                const dt = timestamp - this.lastTime;
+                this.lastTime = timestamp;
+
+                if (!this.gameOver) {
+                    this.update(dt);
+                }
+                this.draw();
+                requestAnimationFrame((t) => this.loop(t));
+            }
+
+            update(dt) {
+                // Resources & Points
+                this.supplyTimer++;
+                
+                // Handle Capture Points Logic
+                const allUnits = this.entities.filter(e => e instanceof Unit);
+                this.capturePoints.forEach(p => p.update(allUnits));
+
+                if (this.supplyTimer > 60) { // Every 1 second (approx)
+                    // Calculate Supply Rate based on owned points
+                    const playerPoints = this.capturePoints.filter(p => p.owner === 'player').length;
+                    const enemyPoints = this.capturePoints.filter(p => p.owner === 'enemy').length;
+                    
+                    const playerRate = CONFIG.SUPPLY_RATE + (playerPoints * 0.5);
+                    const enemyRate = CONFIG.SUPPLY_RATE + (enemyPoints * 0.5);
+
+                    this.playerSupply += playerRate;
+                    this.enemySupply += enemyRate; // AI gets supply now
+
+                    document.getElementById('supply-display').innerText = Math.floor(this.playerSupply);
+                    document.getElementById('supply-rate-display').innerText = `(+${playerRate.toFixed(1)}/s)`;
+                    
+                    this.updateButtons();
+                    this.supplyTimer = 0;
+                }
+
+                // AI Logic (Wave System)
+                this.aiTimer++;
+                // AI gets smarter/faster over time
+                const waveDelay = Math.max(300, 800 - (this.waveNumber * 50)); 
+                
+                if (this.aiTimer > waveDelay) {
+                    this.aiWave();
+                    this.aiTimer = 0;
+                    this.waveNumber++;
+                }
+
+                // Entities
+                const units = this.entities.filter(e => e instanceof Unit);
+                const enemies = this.entities.filter(e => e.team === 'enemy');
+                const playerUnits = this.entities.filter(e => e.team === 'player');
+
+                this.entities.forEach(e => {
+                    // Pass opposing team list AND capture points for logic
+                    const targets = e.team === 'player' ? enemies : playerUnits;
+                    
+                    // Add capture points to target lists for AI logic only? 
+                    // No, Unit.update handles the differentiation
+                    
+                    if (e instanceof Unit) {
+                        e.update(targets, this.capturePoints);
+                    } else {
+                        e.update();
+                    }
+                });
+
+                // Projectiles
+                this.projectiles.forEach(p => p.update());
+                
+                // Particles
+                this.particles.forEach(p => p.update());
+
+                // Cleanup Dead
+                this.entities = this.entities.filter(e => !e.dead);
+                this.projectiles = this.projectiles.filter(p => !p.dead);
+                this.particles = this.particles.filter(p => p.life > 0);
+
+                // Win/Loss Check
+                if (this.playerBase.dead) this.endGame('MISSION FAILED');
+                if (this.enemyBase.dead) this.endGame('MISSION ACCOMPLISHED');
+            }
+
+            draw() {
+                // Clear & Grid
+                ctx.fillStyle = '#050a0f';
+                ctx.fillRect(0, 0, canvas.width, canvas.height);
+                
+                this.drawGrid();
+
+                // Draw World
+                this.entities.forEach(e => e.draw(ctx));
+                this.projectiles.forEach(p => p.draw(ctx));
+                this.particles.forEach(p => p.draw(ctx));
+
+                // Draw Capture Points
+                this.capturePoints.forEach(p => p.draw(ctx));
+
+                // Input UI (Selection Box)
+                this.input.draw(ctx);
+            }
+
+            drawGrid() {
+                ctx.strokeStyle = 'rgba(0, 255, 255, 0.05)';
+                ctx.lineWidth = 1;
+                const size = 50;
+                
+                // Moving grid effect
+                const offset = (Date.now() / 50) % size;
+
+                ctx.beginPath();
+                for (let x = 0; x < canvas.width; x += size) {
+                    ctx.moveTo(x, 0);
+                    ctx.lineTo(x, canvas.height);
+                }
+                for (let y = 0; y < canvas.height; y += size) {
+                    ctx.moveTo(0, y + offset);
+                    ctx.lineTo(canvas.width, y + offset);
+                }
+                ctx.stroke();
+            }
+
+            buildUnit(type) {
+                const stats = CONFIG.UNIT_STATS[type];
+                if (this.playerSupply >= stats.cost && !this.playerBase.dead) {
+                    this.playerSupply -= stats.cost;
+                    // Spawn near player base with slight random offset
+                    const spawnX = this.playerBase.pos.x + randomRange(-50, 50);
+                    const spawnY = this.playerBase.pos.y + randomRange(-50, -100);
+                    const unit = new Unit(spawnX, spawnY, 'player', type);
+                    
+                    // Initial orientation upwards (towards enemy)
+                    unit.angle = -Math.PI / 2;
+                    
+                    this.entities.push(unit);
+                    
+                    // Update UI immediately
+                    document.getElementById('supply-display').innerText = Math.floor(this.playerSupply);
+                    this.updateButtons();
+                }
+            }
+
+            aiWave() {
+                if (this.enemyBase.dead) return;
+                
+                // AI spends supply
+                let spent = 0;
+                let squadSize = 2 + Math.floor(this.waveNumber / 2); // Waves get bigger
+                
+                for(let i=0; i<squadSize; i++) {
+                    const type = Math.random() > 0.4 ? 'fighter' : 'bomber';
+                    const cost = CONFIG.UNIT_STATS[type].cost;
+                    
+                    // Simple cheat: If AI is broke, it gets a free fighter occasionally
+                    if (this.enemySupply >= cost || i === 0) {
+                        if (this.enemySupply >= cost) this.enemySupply -= cost;
+                        
+                        // Spawn with offset
+                        const spawnX = this.enemyBase.pos.x + randomRange(-50, 50);
+                        const spawnY = this.enemyBase.pos.y + randomRange(50, 100);
+                        const unit = new Unit(spawnX, spawnY, 'enemy', type);
+                        unit.angle = Math.PI / 2;
+                        
+                        // AI Strategy: 50% chance to attack base, 50% to capture random point
+                        if (Math.random() > 0.5) {
+                            // Target Base
+                            unit.target = this.playerBase;
+                        } else {
+                            // Target Random Point
+                            const pt = this.capturePoints[Math.floor(Math.random() * this.capturePoints.length)];
+                            unit.target = pt;
+                        }
+                        
+                        this.entities.push(unit);
+                    }
+                }
+            }
+
+            addExplosion(x, y, size) {
+                for(let i=0; i<8; i++) {
+                    this.particles.push(new Particle(x, y, size/2));
+                }
+            }
+
+            updateButtons() {
+                document.getElementById('btn-fighter').disabled = this.playerSupply < CONFIG.UNIT_STATS.fighter.cost;
+                document.getElementById('btn-bomber').disabled = this.playerSupply < CONFIG.UNIT_STATS.bomber.cost;
+            }
+
+            endGame(msg) {
+                this.gameOver = true;
+                const el = document.getElementById('game-over-screen');
+                const title = document.getElementById('game-over-title');
+                el.style.display = 'flex';
+                title.innerText = msg;
+                title.style.color = msg.includes('FAILED') ? 'red' : '#00f0ff';
+            }
+        }
+
+        /**
+         * INPUT HANDLER
+         */
+        class InputHandler {
+            constructor(game) {
+                this.game = game;
+                this.dragStart = null;
+                this.currentMouse = { x: 0, y: 0 };
+                this.selectedUnits = [];
+
+                // Prevent context menu
+                window.oncontextmenu = (e) => e.preventDefault();
+
+                // Mouse Listeners
+                canvas.addEventListener('mousedown', (e) => this.onDown(e));
+                canvas.addEventListener('mousemove', (e) => this.onMove(e));
+                canvas.addEventListener('mouseup', (e) => this.onUp(e));
+                
+                // Touch Listeners (Simple mapping)
+                canvas.addEventListener('touchstart', (e) => {
+                    const touch = e.changedTouches[0];
+                    this.onDown({ clientX: touch.clientX, clientY: touch.clientY, button: 0 });
+                }, {passive: false});
+                
+                canvas.addEventListener('touchend', (e) => {
+                    const touch = e.changedTouches[0];
+                    // Simulate right click for move if tap on empty space? 
+                    // To keep it simple for mobile: Drag = select. Tap = move selected.
+                    if(this.dragStart && Vec2.dist(this.dragStart, {x: touch.clientX, y: touch.clientY}) < 10) {
+                         this.onDown({ clientX: touch.clientX, clientY: touch.clientY, button: 2 });
+                         this.dragStart = null; // Clear drag
+                    } else {
+                        this.onUp({ clientX: touch.clientX, clientY: touch.clientY, button: 0 });
+                    }
+                });
+            }
+
+            onDown(e) {
+                const rect = canvas.getBoundingClientRect();
+                const x = e.clientX - rect.left;
+                const y = e.clientY - rect.top;
+
+                if (e.button === 0) { // Left Click / Touch Start
+                    this.dragStart = { x, y };
+                } else if (e.button === 2) { // Right Click
+                    this.issueMoveCommand(x, y);
+                }
+            }
+
+            onMove(e) {
+                const rect = canvas.getBoundingClientRect();
+                this.currentMouse = {
+                    x: e.clientX - rect.left,
+                    y: e.clientY - rect.top
+                };
+            }
+
+            onUp(e) {
+                if (e.button === 0 && this.dragStart) {
+                    // Calculate selection box
+                    const x1 = Math.min(this.dragStart.x, this.currentMouse.x);
+                    const y1 = Math.min(this.dragStart.y, this.currentMouse.y);
+                    const x2 = Math.max(this.dragStart.x, this.currentMouse.x);
+                    const y2 = Math.max(this.dragStart.y, this.currentMouse.y);
+
+                    // If simple click, just clear or select one
+                    const isClick = (x2 - x1 < 5 && y2 - y1 < 5);
+                    
+                    this.selectedUnits = [];
+                    
+                    this.game.entities.forEach(ent => {
+                        if (ent.team === 'player' && ent instanceof Unit) {
+                            if (isClick) {
+                                if (Vec2.dist(ent.pos, {x: x1, y: y1}) < ent.radius + 10) {
+                                    this.selectedUnits.push(ent);
+                                }
+                            } else {
+                                if (ent.pos.x > x1 && ent.pos.x < x2 && ent.pos.y > y1 && ent.pos.y < y2) {
+                                    this.selectedUnits.push(ent);
+                                }
+                            }
+                        }
+                    });
+
+                    this.dragStart = null;
+                }
+            }
+
+            issueMoveCommand(x, y) {
+                // Visual feedback
+                this.game.particles.push(new Particle(x, y, 5)); // Reuse particle for click effect
+                
+                // Check if targeting an enemy
+                let targetEnemy = null;
+                for (const ent of this.game.entities) {
+                    if (ent.team === 'enemy' && Vec2.dist(ent.pos, {x, y}) < ent.radius + 10) {
+                        targetEnemy = ent;
+                        break;
+                    }
+                }
+
+                this.selectedUnits.forEach(unit => {
+                    if (targetEnemy) {
+                        unit.target = targetEnemy;
+                        unit.moveTarget = null;
+                    } else {
+                        unit.moveTarget = { x, y };
+                        unit.target = null;
+                    }
+                });
+            }
+
+            draw(ctx) {
+                // Draw Selection Box
+                if (this.dragStart) {
+                    ctx.strokeStyle = '#00f0ff';
+                    ctx.lineWidth = 1;
+                    ctx.setLineDash([5, 5]);
+                    ctx.strokeRect(
+                        this.dragStart.x, 
+                        this.dragStart.y, 
+                        this.currentMouse.x - this.dragStart.x, 
+                        this.currentMouse.y - this.dragStart.y
+                    );
+                    ctx.setLineDash([]);
+                }
+            }
+        }
+
+        // INIT
+        const game = new Game();
+        game.start();
+
+    </script>
+</body>
+</html>

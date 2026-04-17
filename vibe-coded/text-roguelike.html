@@ -1,0 +1,776 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>Rogue Delver</title>
+    <style>
+        :root {
+            --bg-color: #050505;
+            --ui-bg: #111;
+            --text-color: #ccc;
+            --accent: #d4a017;
+            --health: #e74c3c;
+            --log-bg: rgba(0, 0, 0, 0.85);
+        }
+        
+        body {
+            margin: 0;
+            padding: 0;
+            background-color: var(--bg-color);
+            color: var(--text-color);
+            font-family: 'Courier New', Courier, monospace;
+            overflow: hidden;
+            display: flex;
+            flex-direction: column;
+            height: 100vh;
+            user-select: none;
+            -webkit-user-select: none;
+        }
+
+        /* Game Container */
+        #game-container {
+            position: relative;
+            flex: 1;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            overflow: hidden;
+        }
+
+        canvas {
+            image-rendering: pixelated;
+            box-shadow: 0 0 20px rgba(0,0,0,0.5);
+        }
+
+        /* UI Overlays */
+        #ui-layer {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            pointer-events: none;
+            display: flex;
+            flex-direction: column;
+            justify-content: space-between;
+            padding: 10px;
+            box-sizing: border-box;
+        }
+
+        .stat-bar {
+            display: flex;
+            gap: 15px;
+            background: var(--ui-bg);
+            padding: 8px 15px;
+            border: 1px solid #333;
+            border-radius: 4px;
+            pointer-events: auto;
+            flex-wrap: wrap;
+            font-weight: bold;
+            font-size: 14px;
+        }
+
+        .stat-item {
+            display: flex;
+            align-items: center;
+        }
+        
+        .stat-label { color: #888; margin-right: 5px; }
+        .stat-value { color: #fff; }
+        .hp-val { color: var(--health); }
+        .gold-val { color: var(--accent); }
+
+        #message-log {
+            height: 120px;
+            overflow-y: auto;
+            background: var(--log-bg);
+            border: 1px solid #333;
+            border-radius: 4px;
+            padding: 8px;
+            font-size: 13px;
+            pointer-events: auto;
+            display: flex;
+            flex-direction: column-reverse; /* Newest at bottom visually if we prepend, or normal if we append. Let's use append + auto scroll */
+        }
+
+        .log-entry { margin-bottom: 2px; opacity: 0.9; }
+        .log-important { color: var(--health); font-weight: bold; }
+        .log-gain { color: var(--accent); }
+        .log-info { color: #aaa; }
+
+        /* Mobile Controls */
+        #mobile-controls {
+            display: none; /* Hidden on desktop */
+            position: absolute;
+            bottom: 20px;
+            right: 20px;
+            pointer-events: auto;
+            width: 150px;
+            height: 150px;
+        }
+
+        .dpad-btn {
+            position: absolute;
+            width: 45px;
+            height: 45px;
+            background: rgba(255, 255, 255, 0.15);
+            border: 1px solid rgba(255,255,255,0.3);
+            border-radius: 50%;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            font-size: 20px;
+            color: white;
+            cursor: pointer;
+            touch-action: manipulation;
+        }
+        .dpad-btn:active { background: rgba(255, 255, 255, 0.4); }
+
+        .btn-up { top: 0; left: 50%; transform: translateX(-50%); }
+        .btn-down { bottom: 0; left: 50%; transform: translateX(-50%); }
+        .btn-left { left: 0; top: 50%; transform: translateY(-50%); }
+        .btn-right { right: 0; top: 50%; transform: translateY(-50%); }
+        .btn-wait { 
+            top: 50%; left: 50%; transform: translate(-50%, -50%); 
+            width: 35px; height: 35px; border-radius: 5px; font-size: 12px;
+        }
+
+        #game-over-screen {
+            display: none;
+            position: absolute;
+            top: 0; left: 0; width: 100%; height: 100%;
+            background: rgba(0,0,0,0.9);
+            color: white;
+            flex-direction: column;
+            justify-content: center;
+            align-items: center;
+            pointer-events: auto;
+            z-index: 100;
+        }
+        
+        button.restart-btn {
+            margin-top: 20px;
+            padding: 10px 20px;
+            background: var(--health);
+            border: none;
+            color: white;
+            font-family: inherit;
+            font-size: 18px;
+            cursor: pointer;
+            border-radius: 4px;
+        }
+
+        /* Responsive adjustments */
+        @media (max-width: 768px) {
+            #mobile-controls { display: block; }
+            .stat-bar { font-size: 12px; padding: 5px; gap: 8px; }
+            #message-log { height: 80px; width: 60%; font-size: 11px; }
+        }
+    </style>
+</head>
+<body>
+
+<div id="game-container">
+    <canvas id="gameCanvas"></canvas>
+    
+    <div id="ui-layer">
+        <div class="stat-bar">
+            <div class="stat-item"><span class="stat-label">Lvl:</span><span id="stat-lvl" class="stat-value">1</span></div>
+            <div class="stat-item"><span class="stat-label">HP:</span><span id="stat-hp" class="stat-value hp-val">20/20</span></div>
+            <div class="stat-item"><span class="stat-label">Atk:</span><span id="stat-atk" class="stat-value">3</span></div>
+            <div class="stat-item"><span class="stat-label">Gold:</span><span id="stat-gold" class="stat-value gold-val">0</span></div>
+            <div class="stat-item"><span class="stat-label">Dungeon:</span><span id="stat-floor" class="stat-value">1</span></div>
+        </div>
+
+        <div id="message-log">
+            <div class="log-entry log-info">Welcome to the dungeon. Find the stairs (>) to descend.</div>
+        </div>
+
+        <div id="mobile-controls">
+            <div class="dpad-btn btn-up" data-key="ArrowUp">▲</div>
+            <div class="dpad-btn btn-left" data-key="ArrowLeft">◀</div>
+            <div class="dpad-btn btn-wait" data-key="Space">.</div>
+            <div class="dpad-btn btn-right" data-key="ArrowRight">▶</div>
+            <div class="dpad-btn btn-down" data-key="ArrowDown">▼</div>
+        </div>
+    </div>
+
+    <div id="game-over-screen">
+        <h1 style="color: #e74c3c;">YOU DIED</h1>
+        <p>Your journey ends here.</p>
+        <p>Level: <span id="final-lvl"></span> | Floor: <span id="final-floor"></span></p>
+        <button class="restart-btn" onclick="game.init()">Try Again</button>
+    </div>
+</div>
+
+<script>
+/**
+ * ROGUE DELVER
+ * A single-file roguelike engine.
+ */
+
+// --- Constants & Config ---
+const TILE_SIZE = 24;
+const MAP_WIDTH = 50;
+const MAP_HEIGHT = 30;
+const FOV_RADIUS = 8;
+
+const COLORS = {
+    wall: '#444',
+    wallLit: '#888',
+    floor: '#111',
+    floorLit: '#2e2e2e',
+    player: '#fff',
+    stairs: '#f1c40f',
+    potion: '#e74c3c',
+    gold: '#f39c12'
+};
+
+const ENTITIES = {
+    rat: { name: 'Giant Rat', char: 'r', color: '#a5694f', hp: 8, atk: 2, xp: 5 },
+    goblin: { name: 'Goblin', char: 'g', color: '#2ecc71', hp: 15, atk: 4, xp: 10 },
+    orc: { name: 'Orc', char: 'O', color: '#27ae60', hp: 25, atk: 6, xp: 20 },
+    ogre: { name: 'Ogre', char: 'T', color: '#c0392b', hp: 50, atk: 9, xp: 50 },
+    potion: { name: 'Health Potion', char: '!', color: '#e74c3c', type: 'item', effect: 'heal', value: 10 },
+    gold: { name: 'Gold', char: '$', color: '#f1c40f', type: 'item', effect: 'gold' }
+};
+
+// --- Utilities ---
+const RNG = {
+    range: (min, max) => Math.floor(Math.random() * (max - min + 1)) + min,
+    oneIn: (n) => Math.random() < 1 / n,
+    pick: (arr) => arr[Math.floor(Math.random() * arr.length)]
+};
+
+// --- Engine Classes ---
+
+class Entity {
+    constructor(x, y, type, template) {
+        this.x = x;
+        this.y = y;
+        this.type = type; // 'player', 'enemy', 'item'
+        this.name = template.name;
+        this.char = template.char;
+        this.color = template.color;
+        
+        // Stats
+        this.hp = template.hp || 0;
+        this.maxHp = this.hp;
+        this.atk = template.atk || 0;
+        this.xp = template.xp || 0;
+        
+        // Item props
+        this.effect = template.effect || null;
+        this.value = template.value || 0;
+
+        this.dead = false;
+    }
+
+    takeDamage(amount) {
+        this.hp -= amount;
+        if (this.hp <= 0) {
+            this.hp = 0;
+            this.dead = true;
+        }
+    }
+
+    heal(amount) {
+        this.hp += amount;
+        if (this.hp > this.maxHp) this.hp = this.maxHp;
+    }
+}
+
+class Map {
+    constructor(width, height) {
+        this.width = width;
+        this.height = height;
+        this.tiles = []; // 0: Wall, 1: Floor
+        this.explored = []; // Boolean
+        this.visible = []; // Boolean
+        this.rooms = [];
+        this.reset();
+    }
+
+    reset() {
+        this.tiles = new Array(this.width * this.height).fill(0);
+        this.explored = new Array(this.width * this.height).fill(false);
+        this.visible = new Array(this.width * this.height).fill(false);
+        this.rooms = [];
+    }
+
+    idx(x, y) {
+        return y * this.width + x;
+    }
+
+    inBounds(x, y) {
+        return x >= 0 && x < this.width && y >= 0 && y < this.height;
+    }
+
+    isBlocked(x, y) {
+        if (!this.inBounds(x, y)) return true;
+        return this.tiles[this.idx(x, y)] === 0;
+    }
+
+    generate() {
+        this.reset();
+        const maxRooms = 20;
+        const minSize = 4;
+        const maxSize = 8;
+
+        for (let i = 0; i < maxRooms; i++) {
+            const w = RNG.range(minSize, maxSize);
+            const h = RNG.range(minSize, maxSize);
+            const x = RNG.range(1, this.width - w - 1);
+            const y = RNG.range(1, this.height - h - 1);
+
+            const newRoom = { x, y, w, h };
+
+            let failed = false;
+            for (let other of this.rooms) {
+                if (x <= other.x + other.w && x + w >= other.x &&
+                    y <= other.y + other.h && y + h >= other.y) {
+                    failed = true;
+                    break;
+                }
+            }
+
+            if (!failed) {
+                this.createRoom(newRoom);
+                if (this.rooms.length > 0) {
+                    const prev = this.rooms[this.rooms.length - 1];
+                    const prevCenter = { x: Math.floor(prev.x + prev.w / 2), y: Math.floor(prev.y + prev.h / 2) };
+                    const newCenter = { x: Math.floor(newRoom.x + newRoom.w / 2), y: Math.floor(newRoom.y + newRoom.h / 2) };
+
+                    if (Math.random() > 0.5) {
+                        this.createHCorridor(prevCenter.x, newCenter.x, prevCenter.y);
+                        this.createVCorridor(prevCenter.y, newCenter.y, newCenter.x);
+                    } else {
+                        this.createVCorridor(prevCenter.y, newCenter.y, prevCenter.x);
+                        this.createHCorridor(prevCenter.x, newCenter.x, newCenter.y);
+                    }
+                }
+                this.rooms.push(newRoom);
+            }
+        }
+    }
+
+    createRoom(room) {
+        for (let y = room.y; y < room.y + room.h; y++) {
+            for (let x = room.x; x < room.x + room.w; x++) {
+                this.tiles[this.idx(x, y)] = 1;
+            }
+        }
+    }
+
+    createHCorridor(x1, x2, y) {
+        for (let x = Math.min(x1, x2); x <= Math.max(x1, x2); x++) {
+            this.tiles[this.idx(x, y)] = 1;
+        }
+    }
+
+    createVCorridor(y1, y2, x) {
+        for (let y = Math.min(y1, y2); y <= Math.max(y1, y2); y++) {
+            this.tiles[this.idx(x, y)] = 1;
+        }
+    }
+
+    computeFOV(px, py, radius) {
+        // Reset visibility for current turn
+        this.visible.fill(false);
+        
+        // Simple Raycasting for FOV
+        for (let i = 0; i < 360; i += 2) {
+            const rad = i * (Math.PI / 180);
+            const dx = Math.cos(rad);
+            const dy = Math.sin(rad);
+            let ox = px + 0.5;
+            let oy = py + 0.5;
+
+            for (let j = 0; j < radius; j++) {
+                const tx = Math.floor(ox);
+                const ty = Math.floor(oy);
+
+                if (!this.inBounds(tx, ty)) break;
+
+                const index = this.idx(tx, ty);
+                this.visible[index] = true;
+                this.explored[index] = true;
+
+                if (this.tiles[index] === 0) break; // Hit wall
+
+                ox += dx;
+                oy += dy;
+            }
+        }
+    }
+}
+
+class Game {
+    constructor() {
+        this.canvas = document.getElementById('gameCanvas');
+        this.ctx = this.canvas.getContext('2d');
+        this.uiLog = document.getElementById('message-log');
+        
+        // Game State
+        this.map = null;
+        this.player = null;
+        this.entities = [];
+        this.level = 1;
+        this.turn = 0;
+        
+        // Input binding
+        this.handleInput = this.handleInput.bind(this);
+        document.addEventListener('keydown', this.handleInput);
+        this.setupMobileControls();
+        window.addEventListener('resize', () => this.resizeCanvas());
+
+        this.init();
+    }
+
+    setupMobileControls() {
+        const buttons = document.querySelectorAll('.dpad-btn');
+        buttons.forEach(btn => {
+            btn.addEventListener('click', (e) => {
+                e.preventDefault();
+                e.stopPropagation();
+                const key = btn.getAttribute('data-key');
+                this.handleInput({ code: key, preventDefault: () => {} });
+            });
+            btn.addEventListener('touchstart', (e) => {
+                e.preventDefault(); // Prevent double tap zoom
+            });
+        });
+    }
+
+    init() {
+        document.getElementById('game-over-screen').style.display = 'none';
+        this.level = 1;
+        this.player = new Entity(0, 0, 'player', { name: 'Hero', char: '@', color: '#fff', hp: 20, atk: 3 });
+        this.player.gold = 0;
+        this.player.lvl = 1;
+        this.player.xp = 0;
+        this.player.nextLevelXp = 20;
+
+        this.startLevel();
+    }
+
+    startLevel() {
+        this.map = new Map(MAP_WIDTH, MAP_HEIGHT);
+        this.map.generate();
+        this.entities = [];
+
+        // Place Player
+        const room = this.map.rooms[0];
+        this.player.x = Math.floor(room.x + room.w / 2);
+        this.player.y = Math.floor(room.y + room.h / 2);
+
+        // Place Stairs in last room
+        const lastRoom = this.map.rooms[this.map.rooms.length - 1];
+        this.stairs = { x: Math.floor(lastRoom.x + lastRoom.w / 2), y: Math.floor(lastRoom.y + lastRoom.h / 2) };
+
+        // Populate Dungeon
+        for (let i = 1; i < this.map.rooms.length - 1; i++) {
+            const r = this.map.rooms[i];
+            const cx = Math.floor(r.x + r.w / 2);
+            const cy = Math.floor(r.y + r.h / 2);
+            
+            // Chance for Mob
+            if (RNG.oneIn(1.2)) {
+                let mobType = ENTITIES.rat;
+                if (this.level > 1) mobType = ENTITIES.goblin;
+                if (this.level > 3) mobType = ENTITIES.orc;
+                if (this.level > 5) mobType = ENTITIES.ogre;
+                
+                // Allow weaker mobs on higher levels too for variety
+                const roll = Math.random();
+                if (this.level > 2 && roll < 0.3) mobType = ENTITIES.rat;
+
+                this.entities.push(new Entity(cx, cy, 'enemy', mobType));
+            }
+
+            // Chance for Item
+            if (RNG.oneIn(3)) {
+                const ox = RNG.range(r.x, r.x + r.w - 1);
+                const oy = RNG.range(r.y, r.y + r.h - 1);
+                if (!this.map.isBlocked(ox, oy) && !(ox === cx && oy === cy)) {
+                    const itemType = RNG.oneIn(2) ? ENTITIES.potion : ENTITIES.gold;
+                    // Add gold amount variance
+                    if (itemType.effect === 'gold') itemType.value = RNG.range(5, 15) * this.level;
+                    this.entities.push(new Entity(ox, oy, 'item', itemType));
+                }
+            }
+        }
+
+        this.log(`Entered Dungeon Level ${this.level}`, 'log-important');
+        this.updateFOV();
+        this.resizeCanvas();
+        this.render();
+    }
+
+    resizeCanvas() {
+        // We want to fit the map into the screen while maintaining aspect ratio or centering
+        // For simplicity, we calculate a tile size that fits, or use camera.
+        // Let's use a "Camera" approach implicitly by centering the drawing offset.
+        // Actually, for this strict roguelike, let's just scale the canvas to fill the container 
+        // and draw the whole map centered.
+        
+        const container = document.getElementById('game-container');
+        this.canvas.width = container.clientWidth;
+        this.canvas.height = container.clientHeight;
+        
+        this.render();
+    }
+
+    handleInput(e) {
+        if (this.player.dead) return;
+
+        let dx = 0;
+        let dy = 0;
+        let tookTurn = false;
+
+        switch (e.code) {
+            case 'ArrowUp': case 'KeyW': dy = -1; break;
+            case 'ArrowDown': case 'KeyS': dy = 1; break;
+            case 'ArrowLeft': case 'KeyA': dx = -1; break;
+            case 'ArrowRight': case 'KeyD': dx = 1; break;
+            case 'Space': case 'Numpad5': tookTurn = true; break; // Wait
+        }
+
+        if (dx !== 0 || dy !== 0) {
+            e.preventDefault();
+            const destX = this.player.x + dx;
+            const destY = this.player.y + dy;
+
+            // Check Wall
+            if (!this.map.isBlocked(destX, destY)) {
+                // Check Entity
+                const target = this.getEntityAt(destX, destY);
+                if (target && target.type === 'enemy') {
+                    this.attack(this.player, target);
+                    tookTurn = true;
+                } else {
+                    this.player.x = destX;
+                    this.player.y = destY;
+                    tookTurn = true;
+                    
+                    // Check items
+                    const item = this.getEntityAt(destX, destY);
+                    if (item && item.type === 'item') {
+                        this.pickup(item);
+                    }
+
+                    // Check Stairs
+                    if (destX === this.stairs.x && destY === this.stairs.y) {
+                        this.nextLevel();
+                        return; // Skip render, nextLevel does it
+                    }
+                }
+            }
+        }
+
+        if (tookTurn) {
+            this.updateFOV();
+            this.processEnemies();
+            this.updateUI();
+            this.render();
+        }
+    }
+
+    updateFOV() {
+        this.map.computeFOV(this.player.x, this.player.y, FOV_RADIUS);
+    }
+
+    getEntityAt(x, y) {
+        return this.entities.find(e => e.x === x && e.y === y && !e.dead);
+    }
+
+    processEnemies() {
+        this.entities.forEach(e => {
+            if (e.type === 'enemy' && !e.dead) {
+                const dist = Math.hypot(this.player.x - e.x, this.player.y - e.y);
+                
+                // Aggro range
+                if (dist < 8 && this.map.visible[this.map.idx(e.x, e.y)]) {
+                    if (dist < 1.5) {
+                        this.attack(e, this.player);
+                    } else {
+                        // Simple movement towards player
+                        const dx = Math.sign(this.player.x - e.x);
+                        const dy = Math.sign(this.player.y - e.y);
+                        
+                        // Try diagonal
+                        if (!this.isBlocked(e.x + dx, e.y + dy)) {
+                            e.x += dx; e.y += dy;
+                        } 
+                        // Try axis
+                        else if (dx !== 0 && !this.isBlocked(e.x + dx, e.y)) {
+                            e.x += dx;
+                        } else if (dy !== 0 && !this.isBlocked(e.x, e.y + dy)) {
+                            e.y += dy;
+                        }
+                    }
+                }
+            }
+        });
+    }
+
+    isBlocked(x, y) {
+        if (this.map.isBlocked(x, y)) return true;
+        if (x === this.player.x && y === this.player.y) return true;
+        if (this.getEntityAt(x, y)) return true;
+        return false;
+    }
+
+    attack(attacker, defender) {
+        // Damage formula: Atk + rand(-1, 1)
+        const damage = Math.max(1, attacker.atk + RNG.range(-1, 1));
+        defender.takeDamage(damage);
+
+        if (attacker === this.player) {
+            this.log(`You hit ${defender.name} for ${damage} dmg.`);
+            if (defender.dead) {
+                this.log(`${defender.name} dies! +${defender.xp} XP`, 'log-gain');
+                this.gainXp(defender.xp);
+            }
+        } else {
+            this.log(`${attacker.name} hits you for ${damage} dmg!`, 'log-important');
+            if (defender.dead) {
+                this.gameOver();
+            }
+        }
+    }
+
+    pickup(item) {
+        if (item.effect === 'heal') {
+            this.player.heal(item.value);
+            this.log(`You drink ${item.name}. HP +${item.value}.`, 'log-gain');
+        } else if (item.effect === 'gold') {
+            this.player.gold += item.value;
+            this.log(`You found ${item.value} gold!`, 'log-gain');
+        }
+        // Remove item
+        item.dead = true;
+    }
+
+    gainXp(amount) {
+        this.player.xp += amount;
+        if (this.player.xp >= this.player.nextLevelXp) {
+            this.player.lvl++;
+            this.player.xp -= this.player.nextLevelXp;
+            this.player.nextLevelXp = Math.floor(this.player.nextLevelXp * 1.5);
+            this.player.maxHp += 5;
+            this.player.hp = this.player.maxHp;
+            this.player.atk += 1;
+            this.log(`Level Up! You are now level ${this.player.lvl}!`, 'log-gain');
+        }
+    }
+
+    nextLevel() {
+        this.level++;
+        this.player.heal(Math.floor(this.player.maxHp / 2)); // Heal 50% on descend
+        this.startLevel();
+        this.log(`You descend deeper...`, 'log-info');
+    }
+
+    log(msg, className = '') {
+        const div = document.createElement('div');
+        div.className = `log-entry ${className}`;
+        div.textContent = `> ${msg}`;
+        this.uiLog.appendChild(div);
+        this.uiLog.scrollTop = this.uiLog.scrollHeight;
+    }
+
+    updateUI() {
+        document.getElementById('stat-lvl').textContent = this.player.lvl;
+        document.getElementById('stat-hp').textContent = `${this.player.hp}/${this.player.maxHp}`;
+        document.getElementById('stat-atk').textContent = this.player.atk;
+        document.getElementById('stat-gold').textContent = this.player.gold;
+        document.getElementById('stat-floor').textContent = this.level;
+    }
+
+    gameOver() {
+        document.getElementById('game-over-screen').style.display = 'flex';
+        document.getElementById('final-lvl').textContent = this.player.lvl;
+        document.getElementById('final-floor').textContent = this.level;
+    }
+
+    render() {
+        const ctx = this.ctx;
+        const cw = this.canvas.width;
+        const ch = this.canvas.height;
+        
+        ctx.fillStyle = '#050505';
+        ctx.fillRect(0, 0, cw, ch);
+
+        if (!this.map) return;
+
+        // Calculate offset to center the map
+        const mapPxW = MAP_WIDTH * TILE_SIZE;
+        const mapPxH = MAP_HEIGHT * TILE_SIZE;
+        const offX = Math.floor((cw - mapPxW) / 2);
+        const offY = Math.floor((ch - mapPxH) / 2);
+
+        ctx.font = `${TILE_SIZE}px monospace`;
+        ctx.textAlign = 'center';
+        ctx.textBaseline = 'middle';
+
+        // Draw Map
+        for (let y = 0; y < MAP_HEIGHT; y++) {
+            for (let x = 0; x < MAP_WIDTH; x++) {
+                const idx = this.map.idx(x, y);
+                const tx = offX + x * TILE_SIZE + TILE_SIZE/2;
+                const ty = offY + y * TILE_SIZE + TILE_SIZE/2;
+
+                if (this.map.visible[idx]) {
+                    if (this.map.tiles[idx] === 0) {
+                        ctx.fillStyle = COLORS.wallLit;
+                        ctx.fillText('#', tx, ty);
+                    } else {
+                        ctx.fillStyle = COLORS.floorLit;
+                        ctx.fillText('.', tx, ty);
+                    }
+                } else if (this.map.explored[idx]) {
+                    if (this.map.tiles[idx] === 0) {
+                        ctx.fillStyle = COLORS.wall;
+                        ctx.fillText('#', tx, ty);
+                    } else {
+                        ctx.fillStyle = COLORS.floor;
+                        ctx.fillText('.', tx, ty);
+                    }
+                }
+            }
+        }
+
+        // Draw Stairs
+        if (this.map.visible[this.map.idx(this.stairs.x, this.stairs.y)]) {
+            const sx = offX + this.stairs.x * TILE_SIZE + TILE_SIZE/2;
+            const sy = offY + this.stairs.y * TILE_SIZE + TILE_SIZE/2;
+            ctx.fillStyle = COLORS.stairs;
+            ctx.fillText('>', sx, sy);
+        }
+
+        // Draw Entities
+        this.entities.forEach(e => {
+            if (!e.dead && this.map.visible[this.map.idx(e.x, e.y)]) {
+                const ex = offX + e.x * TILE_SIZE + TILE_SIZE/2;
+                const ey = offY + e.y * TILE_SIZE + TILE_SIZE/2;
+                ctx.fillStyle = e.color;
+                ctx.fillText(e.char, ex, ey);
+            }
+        });
+
+        // Draw Player
+        const px = offX + this.player.x * TILE_SIZE + TILE_SIZE/2;
+        const py = offY + this.player.y * TILE_SIZE + TILE_SIZE/2;
+        ctx.fillStyle = this.player.color;
+        ctx.fillText(this.player.char, px, py);
+    }
+}
+
+// Start Game
+const game = new Game();
+
+</script>
+</body>
+</html>

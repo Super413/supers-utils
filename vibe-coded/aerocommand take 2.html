@@ -1,0 +1,940 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>AeroCommand: Tactical</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <style>
+        @import url('https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;700&display=swap');
+        
+        body {
+            background-color: #0f172a;
+            color: #f8fafc;
+            font-family: 'JetBrains Mono', monospace;
+            overflow: hidden;
+            user-select: none;
+        }
+        
+        #game-container {
+            position: relative;
+            width: 100vw;
+            height: 100vh;
+        }
+
+        canvas {
+            display: block;
+        }
+
+        .ui-layer {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            pointer-events: none;
+        }
+
+        .hud-panel {
+            pointer-events: auto;
+            background: rgba(15, 23, 42, 0.85);
+            border: 1px solid rgba(56, 189, 248, 0.2);
+            box-shadow: 0 0 10px rgba(0, 0, 0, 0.5);
+            backdrop-filter: blur(4px);
+        }
+
+        #selection-box {
+            border: 1px solid #34d399;
+            background-color: rgba(52, 211, 153, 0.15);
+            position: absolute;
+            display: none;
+            pointer-events: none;
+            z-index: 10;
+        }
+        
+        #game-over {
+            display: none;
+            pointer-events: auto;
+        }
+    </style>
+</head>
+<body>
+
+    <div id="game-container">
+        <canvas id="gameCanvas"></canvas>
+        <div id="selection-box"></div>
+        
+        <!-- UI Overlay -->
+        <div class="ui-layer flex flex-col justify-between p-4">
+            <!-- Top Bar -->
+            <div class="flex justify-between items-start">
+                <div class="hud-panel p-3 rounded-lg border-l-4 border-l-sky-500">
+                    <h1 class="text-xl font-bold text-sky-400 tracking-wider">AERO<span class="text-white">COMMAND</span></h1>
+                    <div class="text-xs text-slate-400 mt-1 flex items-center gap-2">
+                        <span class="w-2 h-2 rounded-full bg-green-500 animate-pulse"></span>
+                        SYSTEMS ONLINE
+                    </div>
+                </div>
+
+                <div class="flex gap-4">
+                     <div class="hud-panel p-2 px-4 rounded-lg text-center">
+                        <div class="text-xs text-sky-500">ALLIES</div>
+                        <div class="text-xl font-bold text-white" id="score-player">0</div>
+                    </div>
+                    <div class="hud-panel p-2 px-4 rounded-lg text-center">
+                        <div class="text-xs text-red-500">HOSTILES</div>
+                        <div class="text-xl font-bold text-white" id="score-enemy">0</div>
+                    </div>
+                </div>
+
+                <div class="hud-panel p-3 rounded-lg text-right min-w-[120px]">
+                    <div class="text-xs text-slate-400">MISSION TIMER</div>
+                    <div class="text-xl font-mono text-sky-300" id="timer">00:00</div>
+                </div>
+            </div>
+
+            <!-- Game Over Screen -->
+            <div id="game-over" class="absolute inset-0 flex items-center justify-center bg-black/60 backdrop-blur-sm">
+                <div class="bg-slate-900 border border-sky-500 p-8 rounded-xl text-center shadow-2xl max-w-md w-full">
+                    <h2 class="text-3xl font-bold mb-2 text-white" id="game-over-title">MISSION ACCOMPLISHED</h2>
+                    <p class="text-slate-400 mb-6" id="game-over-desc">All hostile targets neutralized.</p>
+                    <button onclick="location.reload()" class="px-6 py-3 bg-sky-600 hover:bg-sky-500 text-white font-bold rounded transition w-full">
+                        RESTART SIMULATION
+                    </button>
+                </div>
+            </div>
+
+            <!-- Bottom Bar -->
+            <div class="flex justify-between items-end">
+                <div class="hud-panel p-3 rounded-lg max-w-sm w-full">
+                    <div class="text-xs text-slate-400 mb-2 border-b border-slate-700 pb-1">TACTICAL LOG</div>
+                    <div id="log" class="text-xs font-mono h-24 overflow-hidden flex flex-col-reverse text-slate-300 gap-1">
+                        <div class="opacity-50">Initializing tactical display...</div>
+                    </div>
+                </div>
+
+                <div class="hud-panel p-1 rounded-lg border-2 border-slate-700 bg-black shadow-lg">
+                    <canvas id="minimap" width="200" height="200" class="block"></canvas>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        // --- CONFIGURATION ---
+        const CONFIG = {
+            TEAM_PLAYER: 1,
+            TEAM_ENEMY: 2,
+            WORLD_W: 3000,
+            WORLD_H: 3000,
+            PARTICLE_LIMIT: 200
+        };
+
+        // --- ASSETS & COLORS ---
+        const COLORS = {
+            WATER_DEEP: '#0f172a',
+            WATER_LIGHT: '#1e3a8a',
+            ISLAND_GRASS: '#065f46',
+            ISLAND_SAND: '#d6d3d1',
+            PLAYER: '#3b82f6',
+            ENEMY: '#dc2626',
+            TRACE_PLAYER: 'rgba(59, 130, 246, 0.4)',
+            TRACE_ENEMY: 'rgba(220, 38, 38, 0.4)'
+        };
+
+        // --- STATE MANAGEMENT ---
+        const canvas = document.getElementById('gameCanvas');
+        const ctx = canvas.getContext('2d', { alpha: false });
+        const uiLog = document.getElementById('log');
+        const selectionBox = document.getElementById('selection-box');
+        
+        let gameState = {
+            entities: [],
+            projectiles: [],
+            particles: [],
+            islands: [],
+            clouds: [],
+            camera: { x: 500, y: 500 },
+            mouse: { x: 0, y: 0, worldX: 0, worldY: 0, down: false },
+            selection: { start: null, active: false },
+            time: 0,
+            lastTime: 0,
+            running: true
+        };
+
+        // --- MATH UTILS ---
+        const dist = (a, b) => Math.hypot(a.x - b.x, a.y - b.y);
+        const angleTo = (a, b) => Math.atan2(b.y - a.y, b.x - a.x);
+        const clamp = (val, min, max) => Math.max(min, Math.min(max, val));
+
+        // --- CLASSES ---
+
+        class Particle {
+            constructor(x, y, type) {
+                this.x = x; 
+                this.y = y; 
+                this.type = type;
+                this.life = 1.0;
+                
+                if (type === 'smoke') {
+                    this.vx = (Math.random()-0.5)*2; this.vy = (Math.random()-0.5)*2;
+                    this.size = Math.random()*5+2; this.decay = 0.02;
+                    this.color = [100, 116, 139];
+                } else if (type === 'fire') {
+                    this.vx = (Math.random()-0.5)*4; this.vy = (Math.random()-0.5)*4;
+                    this.size = Math.random()*8+4; this.decay = 0.05;
+                    this.color = [245, 158, 11];
+                } else if (type === 'spark') {
+                    this.vx = (Math.random()-0.5)*15; this.vy = (Math.random()-0.5)*15;
+                    this.size = Math.random()*2+1; this.decay = 0.08;
+                    this.color = [255, 255, 200];
+                } else if (type === 'shockwave') {
+                    this.size = 10; this.maxSize = 80; this.decay = 0.04; this.width = 4;
+                }
+            }
+            update() {
+                if(this.type === 'shockwave') {
+                    this.size += 4; this.width *= 0.95;
+                } else {
+                    this.x += this.vx; this.y += this.vy;
+                }
+                this.life -= this.decay;
+            }
+            draw(ctx) {
+                if(this.type === 'shockwave') {
+                    ctx.beginPath();
+                    ctx.arc(this.x, this.y, this.size, 0, Math.PI*2);
+                    ctx.strokeStyle = `rgba(255,255,255,${this.life})`;
+                    ctx.lineWidth = this.width;
+                    ctx.stroke();
+                    return;
+                }
+                ctx.globalAlpha = this.life;
+                ctx.fillStyle = `rgb(${this.color[0]},${this.color[1]},${this.color[2]})`;
+                ctx.beginPath(); ctx.arc(this.x, this.y, this.size, 0, Math.PI*2); ctx.fill();
+                ctx.globalAlpha = 1;
+            }
+        }
+
+        class Projectile {
+            constructor(owner, target, type) {
+                this.x = owner.x;
+                this.y = owner.y;
+                this.z = owner.z; // Altitude
+                this.owner = owner;
+                this.target = target;
+                this.team = owner.team;
+                this.type = type;
+                this.dead = false;
+                
+                if (type === 'missile') {
+                    this.speed = 8;
+                    this.turnSpeed = 0.15;
+                    this.damage = 35;
+                    this.life = 180;
+                    this.angle = owner.angle;
+                } else if (type === 'shell') {
+                    this.speed = 12;
+                    this.damage = 15;
+                    this.life = 60;
+                    this.angle = angleTo(owner, target) + (Math.random()-0.5)*0.1; // Slight spread
+                }
+            }
+
+            update() {
+                this.life--;
+                if (this.life <= 0) this.dead = true;
+
+                if (this.type === 'missile' && this.target && !this.target.dead) {
+                    // Homing Logic
+                    const idealAngle = angleTo(this, this.target);
+                    let diff = idealAngle - this.angle;
+                    while (diff > Math.PI) diff -= Math.PI * 2;
+                    while (diff < -Math.PI) diff += Math.PI * 2;
+                    this.angle += clamp(diff, -this.turnSpeed, this.turnSpeed);
+                    
+                    // Smoke Trail
+                    if (Math.random() > 0.3) {
+                        gameState.particles.push(new Particle(this.x, this.y, 'smoke'));
+                    }
+                }
+
+                this.x += Math.cos(this.angle) * this.speed;
+                this.y += Math.sin(this.angle) * this.speed;
+
+                // Collision
+                const targets = gameState.entities.filter(e => e.team !== this.team && !e.dead);
+                for (let t of targets) {
+                    // Air-to-Air or Ground-to-Ground mostly, but let's be generous
+                    const d = dist(this, t);
+                    const hitDist = t.radius + 5;
+                    
+                    if (d < hitDist) {
+                        // Bonus damage for correct types
+                        let dmg = this.damage;
+                        if (this.type === 'missile' && t.z === 1) dmg *= 1.5; // Missiles kill planes
+                        if (this.type === 'shell' && t.z === 0) dmg *= 1.2; // Shells kill ships
+                        
+                        t.takeDamage(dmg);
+                        this.dead = true;
+                        createExplosion(this.x, this.y, 0.5);
+                        break;
+                    }
+                }
+            }
+
+            draw(ctx) {
+                ctx.save();
+                ctx.translate(this.x, this.y);
+                ctx.rotate(this.angle);
+                if (this.type === 'missile') {
+                    ctx.fillStyle = '#fff';
+                    ctx.fillRect(-6, -2, 12, 4);
+                    ctx.fillStyle = 'orange'; // Engine
+                    ctx.fillRect(-8, -1, 2, 2);
+                } else {
+                    ctx.fillStyle = '#fde047';
+                    ctx.beginPath(); ctx.arc(0, 0, 3, 0, Math.PI*2); ctx.fill();
+                }
+                ctx.restore();
+            }
+        }
+
+        class Entity {
+            constructor(x, y, team) {
+                this.x = x; this.y = y; this.team = team;
+                this.angle = 0; this.id = Math.random();
+                this.selected = false; this.dead = false;
+                this.health = 100; this.maxHealth = 100;
+                this.cooldown = 0;
+                this.target = null;
+                this.moveTarget = null;
+            }
+
+            takeDamage(amount) {
+                this.health -= amount;
+                if (this.health <= 0) {
+                    this.health = 0;
+                    this.dead = true;
+                    createExplosion(this.x, this.y, this.z === 1 ? 1.5 : 3);
+                    if (this.team === CONFIG.TEAM_PLAYER) logMsg(`We lost a ${this.type}!`, 'error');
+                    else logMsg(`Enemy ${this.type} destroyed!`, 'success');
+                    
+                    if (this.z === 0) gameState.entities.push(new Wreckage(this.x, this.y, this.angle, this.type));
+                }
+            }
+
+            scanForTargets(range) {
+                if (this.target && this.target.dead) this.target = null;
+                // Stick to current target if valid and close
+                if (this.target && dist(this, this.target) < range * 1.2) return;
+
+                let bestDist = range;
+                let bestTarget = null;
+                
+                gameState.entities.forEach(e => {
+                    if (e.team !== this.team && !e.dead) {
+                        const d = dist(this, e);
+                        if (d < bestDist) {
+                            // Simple type matching preference could go here
+                            bestDist = d;
+                            bestTarget = e;
+                        }
+                    }
+                });
+                this.target = bestTarget;
+            }
+        }
+
+        class Fighter extends Entity {
+            constructor(x, y, team) {
+                super(x, y, team);
+                this.type = 'Fighter';
+                this.z = 1; // Air
+                this.maxSpeed = 4.5;
+                this.turnRate = 0.08;
+                this.radius = 15;
+                this.health = 60; this.maxHealth = 60;
+                this.range = 500;
+                this.fireRate = 60; // Frames
+            }
+
+            update() {
+                if (this.dead) return;
+
+                // AI Logic
+                this.scanForTargets(this.range);
+                
+                let desiredAngle = this.angle;
+                let desiredSpeed = this.maxSpeed * 0.5; // Cruise speed
+
+                // Priority 1: Manual Move Command
+                if (this.moveTarget) {
+                    const d = dist(this, this.moveTarget);
+                    if (d > 20) {
+                        desiredAngle = angleTo(this, this.moveTarget);
+                        desiredSpeed = this.maxSpeed;
+                    } else {
+                        this.moveTarget = null; // Arrived
+                    }
+                } 
+                // Priority 2: Combat Engagement
+                else if (this.target) {
+                    const d = dist(this, this.target);
+                    // Circle Strafe Logic
+                    if (d > 300) {
+                        desiredAngle = angleTo(this, this.target); // Close in
+                        desiredSpeed = this.maxSpeed;
+                    } else {
+                        // Flank/Circle
+                        desiredAngle = angleTo(this, this.target) + Math.PI / 2;
+                        desiredSpeed = this.maxSpeed * 0.8;
+                    }
+
+                    // Firing Logic
+                    if (this.cooldown <= 0 && d < 600) {
+                        // Only fire if roughly facing target
+                        const angleToTarget = angleTo(this, this.target);
+                        const angleDiff = Math.abs(this.angle - angleToTarget); // simplified
+                        
+                        // Fire missile
+                        gameState.projectiles.push(new Projectile(this, this.target, 'missile'));
+                        this.cooldown = this.fireRate;
+                    }
+                }
+
+                this.cooldown--;
+
+                // Physics
+                let diff = desiredAngle - this.angle;
+                while (diff > Math.PI) diff -= Math.PI * 2;
+                while (diff < -Math.PI) diff += Math.PI * 2;
+                this.angle += clamp(diff, -this.turnRate, this.turnRate);
+                
+                this.x += Math.cos(this.angle) * desiredSpeed;
+                this.y += Math.sin(this.angle) * desiredSpeed;
+
+                // Engine Particles
+                if (Math.random() > 0.5) {
+                    gameState.particles.push({
+                        x: this.x - Math.cos(this.angle)*15, y: this.y - Math.sin(this.angle)*15,
+                        life: 0.3, type: 'trail', size: 2,
+                        draw: c=>{c.fillStyle=`rgba(255,255,255,${c.life})`;c.beginPath();c.arc(c.x,c.y,c.size,0,Math.PI*2);c.fill();},
+                        update: function(){this.life-=0.1}
+                    });
+                }
+            }
+
+            draw(ctx) {
+                const col = this.team === CONFIG.TEAM_PLAYER ? COLORS.PLAYER : COLORS.ENEMY;
+                ctx.save();
+                ctx.translate(this.x, this.y);
+                ctx.rotate(this.angle);
+                
+                // Jet Shape
+                ctx.fillStyle = col;
+                ctx.beginPath();
+                ctx.moveTo(12, 0); ctx.lineTo(-8, 10); ctx.lineTo(-4, 0); ctx.lineTo(-8, -10);
+                ctx.fill();
+                
+                // Wings
+                ctx.fillStyle = this.team === CONFIG.TEAM_PLAYER ? '#2563eb' : '#b91c1c';
+                ctx.beginPath();
+                ctx.moveTo(-2,0); ctx.lineTo(-10,14); ctx.lineTo(-6,0); ctx.lineTo(-10,-14);
+                ctx.fill();
+                
+                // Cockpit
+                ctx.fillStyle = '#bae6fd';
+                ctx.fillRect(-2, -2, 4, 4);
+
+                if (this.selected) {
+                    ctx.strokeStyle = '#34d399';
+                    ctx.lineWidth = 1;
+                    ctx.beginPath(); ctx.arc(0,0,20,0,Math.PI*2); ctx.stroke();
+                }
+                ctx.restore();
+                drawHealthBar(ctx, this);
+            }
+        }
+
+        class Ship extends Entity {
+            constructor(x, y, team) {
+                super(x, y, team);
+                this.type = 'Destroyer';
+                this.z = 0; // Surface
+                this.maxSpeed = 1.0;
+                this.turnRate = 0.02;
+                this.radius = 30;
+                this.health = 300; this.maxHealth = 300;
+                this.range = 700;
+                this.fireRate = 120; // Slow reload
+                
+                this.turretAngle = 0;
+            }
+
+            update() {
+                if (this.dead) return;
+                this.scanForTargets(this.range);
+
+                // Movement Logic
+                let desiredSpeed = 0;
+                let desiredAngle = this.angle;
+
+                if (this.moveTarget) {
+                    const d = dist(this, this.moveTarget);
+                    if (d > 40) {
+                        desiredAngle = angleTo(this, this.moveTarget);
+                        desiredSpeed = this.maxSpeed;
+                    } else {
+                        this.moveTarget = null;
+                    }
+                } else if (this.target) {
+                    // Turn broadside to target
+                    const ang = angleTo(this, this.target);
+                    const d = dist(this, this.target);
+                    if (d < 400) {
+                        // Too close, back off or circle
+                        desiredAngle = ang + Math.PI; 
+                        desiredSpeed = this.maxSpeed * 0.5;
+                    } else if (d > 600) {
+                        // Chase
+                        desiredAngle = ang;
+                        desiredSpeed = this.maxSpeed;
+                    } else {
+                        // Broadside
+                        desiredAngle = ang + Math.PI/2;
+                        desiredSpeed = this.maxSpeed * 0.2; // Move slowly while firing
+                    }
+                }
+
+                // Physics
+                let diff = desiredAngle - this.angle;
+                while (diff > Math.PI) diff -= Math.PI * 2;
+                while (diff < -Math.PI) diff += Math.PI * 2;
+                this.angle += clamp(diff, -this.turnRate, this.turnRate);
+                
+                this.x += Math.cos(this.angle) * desiredSpeed;
+                this.y += Math.sin(this.angle) * desiredSpeed;
+
+                // Wake
+                if (desiredSpeed > 0 && Math.random() > 0.9) {
+                    gameState.particles.push(new Particle(this.x - Math.cos(this.angle)*20, this.y - Math.sin(this.angle)*20, 'wake'));
+                }
+
+                // Turret Logic
+                if (this.target) {
+                    let tang = angleTo(this, this.target);
+                    let tdiff = tang - this.turretAngle;
+                    while (tdiff > Math.PI) tdiff -= Math.PI * 2;
+                    while (tdiff < -Math.PI) tdiff += Math.PI * 2;
+                    this.turretAngle += clamp(tdiff, -0.05, 0.05);
+
+                    if (this.cooldown <= 0 && Math.abs(tdiff) < 0.2 && dist(this, this.target) < this.range) {
+                        gameState.projectiles.push(new Projectile(this, this.target, 'shell'));
+                        this.cooldown = this.fireRate;
+                        // Muzzle Flash
+                        createMuzzleFlash(this.x + Math.cos(this.turretAngle)*10, this.y + Math.sin(this.turretAngle)*10);
+                    }
+                } else {
+                    // Reset turret to forward
+                    let tdiff = this.angle - this.turretAngle;
+                    while (tdiff > Math.PI) tdiff -= Math.PI * 2;
+                    while (tdiff < -Math.PI) tdiff += Math.PI * 2;
+                    this.turretAngle += clamp(tdiff, -0.05, 0.05);
+                }
+                this.cooldown--;
+            }
+
+            draw(ctx) {
+                const col = this.team === CONFIG.TEAM_PLAYER ? COLORS.PLAYER : COLORS.ENEMY;
+                ctx.save();
+                ctx.translate(this.x, this.y);
+                ctx.rotate(this.angle);
+
+                // Hull
+                ctx.fillStyle = '#475569';
+                ctx.beginPath();
+                ctx.ellipse(0, 0, 30, 10, 0, 0, Math.PI*2);
+                ctx.fill();
+                
+                // Deck Color
+                ctx.fillStyle = col;
+                ctx.fillRect(-10, -6, 20, 12);
+                
+                ctx.restore();
+
+                // Turret (Independent Rotation)
+                ctx.save();
+                ctx.translate(this.x, this.y);
+                ctx.rotate(this.turretAngle);
+                ctx.fillStyle = '#94a3b8';
+                ctx.beginPath(); ctx.rect(-5, -5, 10, 10); ctx.fill();
+                ctx.fillStyle = '#334155';
+                ctx.beginPath(); ctx.rect(0, -2, 18, 4); ctx.fill(); // Barrel
+                ctx.restore();
+
+                if (this.selected) {
+                    ctx.save();
+                    ctx.translate(this.x, this.y);
+                    ctx.strokeStyle = '#34d399';
+                    ctx.lineWidth = 2;
+                    ctx.beginPath(); ctx.arc(0,0,35,0,Math.PI*2); ctx.stroke();
+                    ctx.restore();
+                }
+
+                drawHealthBar(ctx, this);
+            }
+        }
+
+        class Wreckage {
+            constructor(x, y, angle, type) {
+                this.x = x; this.y = y; this.angle = angle;
+                this.type = type; this.life = 1000; this.dead = false;
+                this.z = 0;
+            }
+            update() {
+                this.life--;
+                if(this.life <= 0) this.dead = true;
+                if(Math.random() > 0.98) gameState.particles.push(new Particle(this.x, this.y, 'smoke'));
+            }
+            draw(ctx) {
+                ctx.save(); ctx.translate(this.x, this.y); ctx.rotate(this.angle);
+                ctx.globalAlpha = Math.min(1, this.life/200);
+                ctx.fillStyle = '#1e293b';
+                ctx.beginPath(); ctx.moveTo(10,5); ctx.lineTo(-10,10); ctx.lineTo(-5,-5); ctx.fill();
+                ctx.restore(); ctx.globalAlpha = 1;
+            }
+        }
+
+        // --- GRAPHICS HELPERS ---
+
+        function drawHealthBar(ctx, unit) {
+            if (unit.health >= unit.maxHealth && !unit.selected) return;
+            const pct = unit.health / unit.maxHealth;
+            const w = 30;
+            const yOffset = unit.z === 1 ? -30 : -45;
+            
+            ctx.fillStyle = 'rgba(0,0,0,0.8)';
+            ctx.fillRect(unit.x - w/2, unit.y + yOffset, w, 4);
+            ctx.fillStyle = pct > 0.5 ? '#22c55e' : '#ef4444';
+            ctx.fillRect(unit.x - w/2 + 1, unit.y + yOffset + 1, (w-2)*pct, 2);
+        }
+
+        function createExplosion(x, y, scale) {
+            gameState.particles.push(new Particle(x, y, 'shockwave'));
+            for(let i=0; i<8*scale; i++) gameState.particles.push(new Particle(x, y, 'fire'));
+            for(let i=0; i<12*scale; i++) gameState.particles.push(new Particle(x, y, 'smoke'));
+            for(let i=0; i<10*scale; i++) gameState.particles.push(new Particle(x, y, 'spark'));
+        }
+
+        function createMuzzleFlash(x, y) {
+            gameState.particles.push({
+                x:x, y:y, life:0.1, type:'flash',
+                draw: c=>{c.fillStyle='#fef08a';c.beginPath();c.arc(c.x,c.y,8,0,Math.PI*2);c.fill();},
+                update: function(){this.life-=0.05}
+            });
+        }
+
+        // --- INPUT HANDLING ---
+
+        function setupInputs() {
+            window.addEventListener('resize', resize);
+            
+            canvas.addEventListener('mousedown', e => {
+                if (e.button === 0) { // Select
+                    gameState.selection.active = true;
+                    gameState.selection.start = { x: gameState.mouse.worldX, y: gameState.mouse.worldY, sx: e.clientX, sy: e.clientY };
+                    selectionBox.style.display = 'block';
+                } else if (e.button === 2) { // Command
+                    const targets = gameState.entities.filter(u => u.selected && u.team === CONFIG.TEAM_PLAYER);
+                    if (targets.length === 0) return;
+
+                    // Click visual
+                    gameState.particles.push({
+                        x: gameState.mouse.worldX, y: gameState.mouse.worldY, life: 1, type: 'ui',
+                        draw: c=>{c.strokeStyle='#34d399';c.beginPath();c.arc(c.x,c.y,10* (1-c.life),0,Math.PI*2);c.stroke();},
+                        update: function(){this.life-=0.05}
+                    });
+
+                    // Grid Formation Logic
+                    const cols = Math.ceil(Math.sqrt(targets.length));
+                    const spacing = 40;
+                    
+                    targets.forEach((u, i) => {
+                        const ox = (i % cols) * spacing;
+                        const oy = Math.floor(i / cols) * spacing;
+                        u.moveTarget = { 
+                            x: gameState.mouse.worldX + ox - (cols*spacing)/2, 
+                            y: gameState.mouse.worldY + oy - (targets.length/cols * spacing)/2 
+                        };
+                        u.target = null; // Clear combat target to force move
+                        
+                        // Particle line to destination
+                        gameState.particles.push({
+                            x: u.x, y: u.y, tx: u.moveTarget.x, ty: u.moveTarget.y, life: 0.5, type: 'line',
+                            draw: c=>{c.strokeStyle='rgba(52, 211, 153, 0.3)';c.beginPath();c.moveTo(c.x,c.y);c.lineTo(c.tx,c.ty);c.stroke();},
+                            update: function(){this.life-=0.05}
+                        });
+                    });
+                    
+                    logMsg(`Moving ${targets.length} units.`);
+                }
+            });
+
+            canvas.addEventListener('mousemove', e => {
+                const r = canvas.getBoundingClientRect();
+                gameState.mouse.x = e.clientX - r.left;
+                gameState.mouse.y = e.clientY - r.top;
+                gameState.mouse.worldX = gameState.mouse.x + gameState.camera.x;
+                gameState.mouse.worldY = gameState.mouse.y + gameState.camera.y;
+
+                if (gameState.selection.active) {
+                    const sx = gameState.selection.start.sx;
+                    const sy = gameState.selection.start.sy;
+                    const w = Math.abs(e.clientX - sx);
+                    const h = Math.abs(e.clientY - sy);
+                    selectionBox.style.left = Math.min(e.clientX, sx) + 'px';
+                    selectionBox.style.top = Math.min(e.clientY, sy) + 'px';
+                    selectionBox.style.width = w + 'px';
+                    selectionBox.style.height = h + 'px';
+                }
+            });
+
+            canvas.addEventListener('mouseup', e => {
+                if (e.button === 0 && gameState.selection.active) {
+                    const x1 = Math.min(gameState.mouse.worldX, gameState.selection.start.x);
+                    const x2 = Math.max(gameState.mouse.worldX, gameState.selection.start.x);
+                    const y1 = Math.min(gameState.mouse.worldY, gameState.selection.start.y);
+                    const y2 = Math.max(gameState.mouse.worldY, gameState.selection.start.y);
+
+                    // If click (not drag), small tolerance
+                    const isClick = (x2 - x1 < 5 && y2 - y1 < 5);
+
+                    gameState.entities.forEach(u => {
+                        if (u.team === CONFIG.TEAM_PLAYER && !u.dead) {
+                            if (isClick) {
+                                // Distance check for single click
+                                if (dist({x:gameState.mouse.worldX, y:gameState.mouse.worldY}, u) < 30) {
+                                    u.selected = true;
+                                } else {
+                                    u.selected = false;
+                                }
+                            } else {
+                                // Box select
+                                if (u.x > x1 && u.x < x2 && u.y > y1 && u.y < y2) {
+                                    u.selected = true;
+                                } else {
+                                    u.selected = false;
+                                }
+                            }
+                        }
+                    });
+                    
+                    gameState.selection.active = false;
+                    selectionBox.style.display = 'none';
+                }
+            });
+
+            document.addEventListener('keydown', e => {
+                const s = 30;
+                if(e.key === 'w' || e.key === 'ArrowUp') gameState.camera.y -= s;
+                if(e.key === 's' || e.key === 'ArrowDown') gameState.camera.y += s;
+                if(e.key === 'a' || e.key === 'ArrowLeft') gameState.camera.x -= s;
+                if(e.key === 'd' || e.key === 'ArrowRight') gameState.camera.x += s;
+                // Clamp
+                gameState.camera.x = clamp(gameState.camera.x, 0, CONFIG.WORLD_W - canvas.width);
+                gameState.camera.y = clamp(gameState.camera.y, 0, CONFIG.WORLD_H - canvas.height);
+            });
+            
+            canvas.addEventListener('contextmenu', e => e.preventDefault());
+        }
+
+        function resize() {
+            canvas.width = window.innerWidth;
+            canvas.height = window.innerHeight;
+        }
+
+        // --- MAP GENERATION ---
+
+        function generateWorld() {
+            // Islands
+            for(let i=0; i<12; i++) {
+                gameState.islands.push({
+                    x: Math.random() * CONFIG.WORLD_W,
+                    y: Math.random() * CONFIG.WORLD_H,
+                    r: 80 + Math.random() * 150
+                });
+            }
+            // Clouds
+            for(let i=0; i<50; i++) {
+                gameState.clouds.push({
+                    x: Math.random() * CONFIG.WORLD_W,
+                    y: Math.random() * CONFIG.WORLD_H,
+                    size: 60 + Math.random() * 100,
+                    speed: 0.1 + Math.random()*0.2
+                });
+            }
+            
+            // Player Start (Bottom Left)
+            for(let i=0; i<5; i++) gameState.entities.push(new Fighter(200 + i*50, 200, CONFIG.TEAM_PLAYER));
+            for(let i=0; i<3; i++) gameState.entities.push(new Ship(200 + i*100, 350, CONFIG.TEAM_PLAYER));
+
+            // Enemy Start (Scattered Top Right)
+            for(let i=0; i<6; i++) gameState.entities.push(new Fighter(CONFIG.WORLD_W - 300 - Math.random()*400, CONFIG.WORLD_H - 300 - Math.random()*400, CONFIG.TEAM_ENEMY));
+            for(let i=0; i<4; i++) gameState.entities.push(new Ship(CONFIG.WORLD_W - 400 - Math.random()*300, CONFIG.WORLD_H - 400 - Math.random()*300, CONFIG.TEAM_ENEMY));
+        }
+
+        // --- UI & LOGGING ---
+
+        function logMsg(msg, type='info') {
+            const div = document.createElement('div');
+            let color = 'text-slate-300';
+            if (type==='error') color = 'text-red-400';
+            if (type==='success') color = 'text-green-400';
+            
+            div.className = color;
+            div.innerText = `> ${msg}`;
+            uiLog.prepend(div);
+            if(uiLog.children.length > 8) uiLog.lastChild.remove();
+        }
+
+        function updateScores() {
+            const playerCnt = gameState.entities.filter(e => e.team === CONFIG.TEAM_PLAYER && !e.dead).length;
+            const enemyCnt = gameState.entities.filter(e => e.team === CONFIG.TEAM_ENEMY && !e.dead).length;
+            
+            document.getElementById('score-player').innerText = playerCnt;
+            document.getElementById('score-enemy').innerText = enemyCnt;
+
+            // Check Win Condition
+            if (enemyCnt === 0 && gameState.running) {
+                gameState.running = false;
+                document.getElementById('game-over').style.display = 'flex';
+                document.getElementById('game-over-title').innerText = "VICTORY";
+                document.getElementById('game-over-title').className = "text-3xl font-bold mb-2 text-green-400";
+            }
+            else if (playerCnt === 0 && gameState.running) {
+                gameState.running = false;
+                document.getElementById('game-over').style.display = 'flex';
+                document.getElementById('game-over-title').innerText = "DEFEAT";
+                document.getElementById('game-over-title').className = "text-3xl font-bold mb-2 text-red-500";
+                document.getElementById('game-over-desc').innerText = "Critical Mission Failure.";
+            }
+        }
+
+        // --- MAIN LOOP ---
+
+        function renderMinimap() {
+            const mCtx = document.getElementById('minimap').getContext('2d');
+            const w = mCtx.canvas.width;
+            const h = mCtx.canvas.height;
+            const sx = w / CONFIG.WORLD_W;
+            const sy = h / CONFIG.WORLD_H;
+
+            mCtx.fillStyle = '#0f172a';
+            mCtx.fillRect(0,0,w,h);
+
+            // Islands
+            mCtx.fillStyle = '#1e293b';
+            gameState.islands.forEach(i => {
+                mCtx.beginPath(); mCtx.arc(i.x*sx, i.y*sy, i.r*sx, 0, Math.PI*2); mCtx.fill();
+            });
+
+            // Units
+            gameState.entities.forEach(u => {
+                if(u.dead) return;
+                mCtx.fillStyle = u.team === CONFIG.TEAM_PLAYER ? '#3b82f6' : '#dc2626';
+                mCtx.fillRect(u.x*sx-2, u.y*sy-2, 4, 4);
+            });
+
+            // Camera Rect
+            mCtx.strokeStyle = 'white';
+            mCtx.lineWidth = 1;
+            mCtx.strokeRect(gameState.camera.x*sx, gameState.camera.y*sy, canvas.width*sx, canvas.height*sy);
+        }
+
+        function loop(timestamp) {
+            // Delta Time
+            // const dt = (timestamp - gameState.lastTime) / 1000;
+            gameState.lastTime = timestamp;
+            gameState.time++;
+
+            // 1. Update
+            if (gameState.running) {
+                gameState.entities.forEach(e => e.update());
+                gameState.projectiles.forEach(p => p.update());
+                gameState.particles.forEach(p => p.update());
+                
+                // Cleanup
+                gameState.projectiles = gameState.projectiles.filter(p => !p.dead);
+                gameState.particles = gameState.particles.filter(p => p.life > 0);
+                gameState.entities = gameState.entities.filter(e => !e.dead || e instanceof Wreckage);
+                
+                if (gameState.time % 60 === 0) updateScores();
+                
+                // Update Timer UI
+                let secs = Math.floor(gameState.time / 60);
+                let mins = Math.floor(secs / 60);
+                document.getElementById('timer').innerText = `${mins.toString().padStart(2,'0')}:${(secs%60).toString().padStart(2,'0')}`;
+            }
+
+            // 2. Draw Background
+            const grad = ctx.createLinearGradient(0,0,0,canvas.height);
+            grad.addColorStop(0, COLORS.WATER_DEEP); grad.addColorStop(1, COLORS.WATER_LIGHT);
+            ctx.fillStyle = grad; ctx.fillRect(0,0,canvas.width,canvas.height);
+
+            ctx.save();
+            ctx.translate(-gameState.camera.x, -gameState.camera.y);
+
+            // Draw Islands
+            gameState.islands.forEach(island => {
+                // Optimization: Cull
+                if (island.x + island.r < gameState.camera.x || island.x - island.r > gameState.camera.x + canvas.width) return;
+                
+                ctx.fillStyle = COLORS.ISLAND_SAND;
+                ctx.beginPath(); ctx.arc(island.x, island.y, island.r, 0, Math.PI*2); ctx.fill();
+                ctx.fillStyle = COLORS.ISLAND_GRASS;
+                ctx.beginPath(); ctx.arc(island.x, island.y, island.r * 0.85, 0, Math.PI*2); ctx.fill();
+            });
+
+            // Draw Shadows
+            gameState.entities.forEach(e => { if(!e.dead && !(e instanceof Wreckage)) {
+                ctx.save(); ctx.translate(e.z===1?20:5, e.z===1?20:5); 
+                ctx.globalAlpha=0.3; ctx.fillStyle='black'; 
+                // Simple Shadow shape
+                ctx.beginPath(); ctx.arc(e.x, e.y, 10, 0, Math.PI*2); ctx.fill();
+                ctx.restore();
+            }});
+
+            // Draw Entities & Wreckage
+            gameState.entities.forEach(e => e.draw(ctx));
+            gameState.projectiles.forEach(p => p.draw(ctx));
+            gameState.particles.forEach(p => p.draw(ctx));
+
+            // Draw Clouds
+            gameState.clouds.forEach(c => {
+                c.x += c.speed;
+                if(c.x > CONFIG.WORLD_W + 100) c.x = -100;
+                ctx.fillStyle = `rgba(255,255,255,0.15)`;
+                ctx.beginPath(); ctx.arc(c.x, c.y, c.size, 0, Math.PI*2); ctx.fill();
+            });
+
+            ctx.restore();
+
+            // 3. UI Updates
+            if (gameState.time % 5 === 0) renderMinimap();
+
+            requestAnimationFrame(loop);
+        }
+
+        // --- INIT ---
+        window.onload = () => {
+            resize();
+            setupInputs();
+            generateWorld();
+            logMsg("Welcome Commander. Engage hostiles.", "success");
+            requestAnimationFrame(loop);
+        };
+
+    </script>
+</body>
+</html>

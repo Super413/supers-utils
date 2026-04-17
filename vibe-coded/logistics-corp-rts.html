@@ -1,0 +1,1414 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Logistics Corps: Forward Operating Base</title>
+    <style>
+        :root {
+            --bg-color: #1a1c1e;
+            --ui-bg: #2b2e31;
+            --text-color: #a0a8b0;
+            --accent: #5e7c8d;
+            --danger: #8d5e5e;
+            --warning: #8d855e;
+            --success: #5e8d6d;
+            --font-main: 'Courier New', Courier, monospace;
+        }
+        body {
+            margin: 0;
+            padding: 0;
+            background-color: var(--bg-color);
+            color: var(--text-color);
+            font-family: var(--font-main);
+            overflow: hidden;
+            user-select: none;
+            display: flex;
+            flex-direction: column;
+            height: 100vh;
+        }
+        #game-container {
+            position: relative;
+            flex-grow: 1;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            overflow: hidden;
+        }
+        canvas {
+            background-color: #0f1112;
+            box-shadow: 0 0 20px rgba(0,0,0,0.5);
+            cursor: crosshair;
+        }
+        #ui-layer {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            pointer-events: none;
+            display: flex;
+            flex-direction: column;
+            justify-content: space-between;
+        }
+        .hud-panel {
+            background: rgba(15, 17, 18, 0.9);
+            padding: 10px;
+            pointer-events: auto;
+            border: 1px solid #333;
+            display: flex;
+            gap: 20px;
+            font-size: 14px;
+            text-transform: uppercase;
+            letter-spacing: 1px;
+            flex-wrap: wrap;
+            justify-content: center;
+        }
+        #top-bar {
+            border-bottom: 2px solid var(--accent);
+            justify-content: space-between;
+            align-items: center;
+        }
+        #bottom-bar {
+            border-top: 2px solid var(--accent);
+            justify-content: center;
+            gap: 10px;
+        }
+        .stat-box {
+            display: flex;
+            flex-direction: column;
+            align-items: flex-start;
+        }
+        .stat-value {
+            font-size: 18px;
+            font-weight: bold;
+            color: #eee;
+        }
+        .btn {
+            background: var(--ui-bg);
+            border: 1px solid #444;
+            color: var(--text-color);
+            padding: 8px 16px;
+            font-family: var(--font-main);
+            cursor: pointer;
+            transition: all 0.2s;
+            text-align: left;
+            position: relative;
+            min-width: 120px;
+            margin-bottom: 5px;
+        }
+        .btn:hover {
+            background: #3a3e42;
+            border-color: var(--accent);
+        }
+        .btn.active {
+            background: var(--accent);
+            color: #fff;
+            border-color: #fff;
+        }
+        .btn small {
+            display: block;
+            font-size: 10px;
+            opacity: 0.7;
+        }
+        .cost-badge {
+            position: absolute;
+            top: 2px;
+            right: 4px;
+            font-size: 10px;
+            color: var(--warning);
+        }
+        #modal-overlay {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background: rgba(0,0,0,0.85);
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            z-index: 100;
+            pointer-events: auto;
+        }
+        .modal-content {
+            background: var(--ui-bg);
+            border: 2px solid var(--accent);
+            padding: 40px;
+            max-width: 600px;
+            width: 80%;
+            text-align: center;
+        }
+        .intel-card {
+            border: 2px solid var(--success);
+            background: #111;
+            text-align: left;
+            padding: 20px;
+            position: relative;
+        }
+        .intel-card h3 { color: var(--success); margin-top: 0; border-bottom: 1px solid #333; padding-bottom: 10px; }
+        .intel-stats { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin: 15px 0; font-size: 14px; }
+        
+        h1, h2 { margin-top: 0; color: #fff; }
+        .report-log {
+            text-align: left;
+            background: #000;
+            padding: 10px;
+            height: 200px;
+            overflow-y: auto;
+            font-size: 12px;
+            margin-bottom: 20px;
+            border: 1px solid #444;
+            color: #8f8;
+        }
+        .hidden { display: none !important; }
+        .tooltip {
+            position: absolute;
+            background: rgba(0, 0, 0, 0.9);
+            border: 1px solid var(--accent);
+            padding: 5px 10px;
+            font-size: 12px;
+            pointer-events: none;
+            z-index: 50;
+            max-width: 200px;
+        }
+        #weather-indicator {
+            position: absolute;
+            top: 60px;
+            right: 20px;
+            background: rgba(0,0,0,0.5);
+            padding: 5px;
+            border: 1px solid #555;
+            font-size: 12px;
+        }
+    </style>
+</head>
+<body>
+
+<div id="game-container">
+    <canvas id="gameCanvas"></canvas>
+    
+    <!-- Weather & Intel Status -->
+    <div id="weather-indicator">WEATHER: CLEAR | VISIBILITY: 100%</div>
+
+    <div id="ui-layer">
+        <div id="top-bar" class="hud-panel">
+            <div class="stat-box">
+                <span>Base Integrity</span>
+                <span id="hp-val" class="stat-value" style="color:var(--success)">100%</span>
+            </div>
+            <div class="stat-box">
+                <span>Logistics (Supply)</span>
+                <span id="logistics-val" class="stat-value" style="color:var(--warning)">500</span>
+            </div>
+            <div class="stat-box">
+                <span>Threat Level</span>
+                <span id="wave-val" class="stat-value">WAITING...</span>
+            </div>
+            <div class="stat-box">
+                <span>Clock</span>
+                <span id="time-val" class="stat-value">08:00</span>
+            </div>
+            <button class="btn" id="next-wave-btn" onclick="game.startNextWave()">INITIATE CONTACT</button>
+        </div>
+
+        <div id="bottom-bar" class="hud-panel">
+            <!-- Generated by JS -->
+        </div>
+    </div>
+
+    <!-- Modals -->
+    <div id="modal-overlay">
+        <div class="modal-content" id="start-screen">
+            <h1>LOGISTICS CORPS: FOB DEFENSE</h1>
+            <p>SECTOR 7 - SUPPLY ROUTE ALPHA</p>
+            <p style="font-size:14px; color:#aaa; margin: 20px 0;">
+                DEFEND THE CONVOY ROUTE.<br>
+                MANAGE AMMUNITION AND LOGISTICS.<br>
+                IDENTIFY UNKNOWN CONTACTS.<br>
+                SUPPRESS ENEMY MOVEMENT.
+            </p>
+            <button class="btn" style="font-size:18px; padding: 15px 30px;" onclick="game.init()">INITIALIZE SYSTEMS</button>
+        </div>
+        
+        <div class="modal-content hidden" id="aar-screen">
+            <h2>AFTER ACTION REPORT</h2>
+            <div class="report-log" id="aar-log"></div>
+            <p>Resupply costs deducted. Repairs authorized.</p>
+            <button class="btn" onclick="game.closeAAR()">CONTINUE OPERATIONS</button>
+        </div>
+        
+        <div class="modal-content hidden" id="intel-screen">
+            <h2>NEW INTELLIGENCE RECEIVED</h2>
+            <div class="intel-card">
+                <h3 id="intel-title">ENEMY TYPE</h3>
+                <p id="intel-desc">Description here.</p>
+                <div class="intel-stats">
+                    <span id="intel-hp">HP: 100</span>
+                    <span id="intel-speed">SPEED: Fast</span>
+                    <span id="intel-armor">ARMOR: None</span>
+                    <span id="intel-reward">BOUNTY: 50</span>
+                </div>
+            </div>
+            <button class="btn" onclick="game.closeIntel()">ACKNOWLEDGE</button>
+        </div>
+
+        <div class="modal-content hidden" id="game-over-screen">
+            <h2 style="color:var(--danger)">CRITICAL FAILURE</h2>
+            <p>BASE OVERRUN. SUPPLY ROUTE SEVERED.</p>
+            <button class="btn" onclick="location.reload()">RESTART SIMULATION</button>
+        </div>
+    </div>
+    
+    <div id="tooltip" class="tooltip hidden"></div>
+</div>
+
+<script>
+/**
+ * AUDIO ENGINE (Procedural)
+ */
+const audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+const Sound = {
+    playTone: (freq, type, duration, vol = 0.1) => {
+        if(audioCtx.state === 'suspended') audioCtx.resume();
+        const osc = audioCtx.createOscillator();
+        const gain = audioCtx.createGain();
+        osc.type = type;
+        osc.frequency.setValueAtTime(freq, audioCtx.currentTime);
+        gain.gain.setValueAtTime(vol, audioCtx.currentTime);
+        gain.gain.exponentialRampToValueAtTime(0.01, audioCtx.currentTime + duration);
+        osc.connect(gain);
+        gain.connect(audioCtx.destination);
+        osc.start();
+        osc.stop(audioCtx.currentTime + duration);
+    },
+    shoot: (type) => {
+        if (type === 'hmg') Sound.playNoise(0.05, 0.1); 
+        else if (type === 'autocannon') Sound.playTone(150, 'sawtooth', 0.08, 0.1);
+        else if (type === 'sniper') Sound.playTone(600, 'sawtooth', 0.1, 0.05);
+        else if (type === 'atgm') Sound.playTone(100, 'triangle', 0.4, 0.1);
+        else if (type === 'mortar') Sound.playTone(100, 'square', 0.5, 0.2);
+    },
+    hit: () => Sound.playNoise(0.1, 0.2),
+    alert: () => Sound.playTone(880, 'sine', 0.3, 0.1),
+    build: () => Sound.playTone(440, 'square', 0.1, 0.1),
+    playNoise: (duration, vol) => {
+        const bufferSize = audioCtx.sampleRate * duration;
+        const buffer = audioCtx.createBuffer(1, bufferSize, audioCtx.sampleRate);
+        const data = buffer.getChannelData(0);
+        for (let i = 0; i < bufferSize; i++) {
+            data[i] = Math.random() * 2 - 1;
+        }
+        const noise = audioCtx.createBufferSource();
+        noise.buffer = buffer;
+        const gain = audioCtx.createGain();
+        gain.gain.setValueAtTime(vol, audioCtx.currentTime);
+        gain.gain.exponentialRampToValueAtTime(0.01, audioCtx.currentTime + duration);
+        noise.connect(gain);
+        gain.connect(audioCtx.destination);
+        noise.start();
+    }
+};
+
+/**
+ * GAME CONSTANTS & CONFIG
+ */
+const TILE_SIZE = 40;
+const CANVAS_WIDTH = 1200;
+const CANVAS_HEIGHT = 800;
+
+const TOWERS = {
+    'OP': { 
+        name: 'Obs. Post', 
+        cost: 150, 
+        range: 250, 
+        damage: 0, 
+        rate: 60, 
+        ammoMax: 100, 
+        desc: 'Reveals cloaked units and buffs range of nearby units.',
+        color: '#64d9b9',
+        symbol: '👁️'
+    },
+    'HMG': { 
+        name: 'HMG Nest', 
+        cost: 250, 
+        range: 150, 
+        damage: 8, 
+        rate: 10, 
+        ammoMax: 500, 
+        desc: 'Rapid fire. High suppression. Needs frequent resupply.',
+        color: '#d9a064',
+        symbol: '✛'
+    },
+    'BARRACKS': {
+        name: 'FOB Barracks',
+        cost: 400,
+        range: 100,
+        damage: 5,
+        rate: 300, 
+        ammoMax: 10,
+        desc: 'Deploys Ranger squads that march out to intercept enemies.',
+        color: '#64d964',
+        symbol: '⌂'
+    },
+    'AUTOCANNON': {
+        name: 'Autocannon',
+        cost: 350,
+        range: 170,
+        damage: 15,
+        rate: 8,
+        ammoMax: 300,
+        desc: 'Shreds light armor and infantry. Burst fire.',
+        color: '#e69500',
+        symbol: '::'
+    },
+    'SNIPER': { 
+        name: 'Sniper Team', 
+        cost: 300, 
+        range: 350, 
+        damage: 50, 
+        rate: 120,
+        ammoMax: 40, 
+        desc: 'Precision fire. Ignores armor. Single target.',
+        color: '#d9d964',
+        symbol: '⌖'
+    },
+    'AIRPORT': {
+        name: 'Airstrip',
+        cost: 600,
+        range: 1000, 
+        damage: 20,
+        rate: 10, 
+        ammoMax: 6,
+        desc: 'Deploys a CAS Jet to loiter and strafe targets globally.',
+        color: '#aaddff',
+        symbol: '✈'
+    },
+    'ATGM': {
+        name: 'ATGM',
+        cost: 500,
+        range: 400,
+        damage: 150,
+        rate: 180,
+        ammoMax: 15,
+        desc: 'Anti-Tank Guided Missile. High damage vs armor.',
+        color: '#ff4400',
+        symbol: '🚀'
+    },
+    'MORTAR': { 
+        name: 'Mortar Pit', 
+        cost: 400, 
+        range: 400, 
+        minRange: 100,
+        damage: 60, 
+        rate: 180, 
+        ammoMax: 20, 
+        desc: 'Indirect fire. AOE damage. Arcing projectiles.',
+        color: '#d96464',
+        symbol: '◎'
+    },
+    'EW': { 
+        name: 'EW Node', 
+        cost: 350, 
+        range: 180, 
+        damage: 1, 
+        rate: 5, 
+        ammoMax: 1000, 
+        desc: 'Electronic Warfare. Slows enemies and reduces coordination.',
+        color: '#a064d9',
+        symbol: '⚡'
+    },
+    'SUPPLY': { 
+        name: 'Supply Point', 
+        cost: 200, 
+        range: 0, 
+        damage: 0, 
+        rate: 240, 
+        ammoMax: 50,
+        desc: 'Generates logistics resources during active combat.',
+        color: '#648dd9',
+        symbol: '📦'
+    }
+};
+
+const ENEMIES = {
+    'RECON': { hp: 30, speed: 2.5, reward: 15, color: '#88ff88', name: 'Recon Team', hidden: true, desc: "Fast moving scout units. Low durability, but hard to detect without Observation Posts." },
+    'INFANTRY': { hp: 60, speed: 1.2, reward: 25, color: '#ffff88', name: 'Rifle Squad', hidden: true, desc: "Standard infantry fireteam. Vulnerable to suppression and explosives." },
+    'VETERAN': { hp: 150, speed: 1.0, reward: 40, color: '#ff8888', name: 'Vet. Squad', armor: 0.5, hidden: true, desc: "Elite troops with body armor. Takes reduced damage from small arms." },
+    'APC': { hp: 400, speed: 0.9, reward: 80, color: '#559955', name: 'APC', armor: 0.7, hidden: false, desc: "Armored Personnel Carrier. Highly resistant to small arms." },
+    'EXOSUIT': { hp: 250, speed: 1.5, reward: 60, color: '#ccffcc', name: 'Heavy Exo', armor: 0.3, hidden: false, desc: "Heavy infantry with mechanical assistance. Fast and durable." },
+    'SAPPER': { hp: 80, speed: 1.8, reward: 35, color: '#ff88ff', name: 'Sapper', special: 'disable', hidden: true, desc: "Demolition experts. Prioritize reaching defensive structures." },
+    'TRUCK': { hp: 250, speed: 0.8, reward: 100, color: '#aaaaff', name: 'Technical', hidden: false, desc: "Light vehicle with mounted weapon. High durability, cannot hide." }
+};
+
+const WEATHER_TYPES = [
+    { name: 'CLEAR', rangeMod: 1.0, speedMod: 1.0, visText: '100%' },
+    { name: 'HEAVY RAIN', rangeMod: 0.7, speedMod: 0.8, visText: 'POOR (Mud)' },
+    { name: 'FOG', rangeMod: 0.5, speedMod: 1.0, visText: 'CRITICAL (0m)' },
+    { name: 'SANDSTORM', rangeMod: 0.6, speedMod: 0.6, visText: 'LOW (Grit)' }
+];
+
+/**
+ * GAME LOGIC
+ */
+const game = {
+    canvas: document.getElementById('gameCanvas'),
+    ctx: null,
+    width: CANVAS_WIDTH,
+    height: CANVAS_HEIGHT,
+    
+    // State
+    state: 'MENU',
+    logistics: 600,
+    baseHealth: 100,
+    wave: 0,
+    time: 0,
+    weather: WEATHER_TYPES[0],
+    intelUnlocked: [],
+    
+    // Entities
+    path: [],
+    towers: [],
+    enemies: [],
+    projectiles: [],
+    particles: [],
+    floatText: [],
+    friendlies: [], 
+    jets: [],       
+    
+    // Input
+    mouseX: 0,
+    mouseY: 0,
+    selectedTowerType: null,
+    selectedTower: null,
+    
+    // Wave Logic
+    waveActive: false,
+    enemiesToSpawn: [],
+    spawnTimer: 0,
+
+    init: function() {
+        this.ctx = this.canvas.getContext('2d');
+        this.canvas.width = this.width;
+        this.canvas.height = this.height;
+        
+        this.canvas.addEventListener('mousemove', e => this.handleMouseMove(e));
+        this.canvas.addEventListener('click', e => this.handleClick(e));
+        this.canvas.addEventListener('contextmenu', e => { e.preventDefault(); this.selectedTowerType = null; this.selectedTower = null; });
+        window.addEventListener('keydown', e => this.handleKey(e));
+        
+        this.generateMap();
+        this.setupUI();
+        
+        document.getElementById('start-screen').classList.add('hidden');
+        document.getElementById('modal-overlay').classList.add('hidden'); 
+        this.state = 'PLAY';
+        this.loop();
+    },
+    
+    generateMap: function() {
+        this.path = [];
+        let x = 0;
+        let y = this.height / 2;
+        let segmentWidth = 60;
+        this.path.push({x, y});
+        while (x < this.width) {
+            x += segmentWidth;
+            let deviation = Math.sin(x * 0.01) * 200 + (Math.random() - 0.5) * 100;
+            y = (this.height / 2) + deviation;
+            y = Math.max(100, Math.min(this.height - 100, y));
+            this.path.push({x, y});
+        }
+    },
+    
+    setupUI: function() {
+        const bar = document.getElementById('bottom-bar');
+        bar.innerHTML = '';
+        Object.keys(TOWERS).forEach(key => {
+            const t = TOWERS[key];
+            const btn = document.createElement('button');
+            btn.className = 'btn';
+            btn.innerHTML = `${t.symbol} ${t.name} <span class="cost-badge">${t.cost}</span><small>A:${t.ammoMax}</small>`;
+            btn.onclick = () => {
+                this.selectedTowerType = key;
+                this.selectedTower = null;
+                document.querySelectorAll('.btn').forEach(b => b.classList.remove('active'));
+                btn.classList.add('active');
+            };
+            btn.onmouseenter = () => {
+                const tt = document.getElementById('tooltip');
+                tt.innerHTML = `<b>${t.name}</b><br>${t.desc}<br>Range: ${t.range}<br>Dmg: ${t.damage}`;
+                tt.classList.remove('hidden');
+                tt.style.left = btn.offsetLeft + 'px';
+                tt.style.top = (btn.offsetTop - 100) + 'px';
+            };
+            btn.onmouseleave = () => { document.getElementById('tooltip').classList.add('hidden'); };
+            bar.appendChild(btn);
+        });
+    },
+
+    startNextWave: function() {
+        if (this.waveActive) return;
+        this.wave++;
+        this.waveActive = true;
+        this.changeWeather();
+        document.getElementById('next-wave-btn').disabled = true;
+        document.getElementById('next-wave-btn').innerText = "CONTACT IN PROGRESS";
+        document.getElementById('wave-val').innerText = `CONTACT: WAVE ${this.wave}`;
+        document.getElementById('wave-val').style.color = 'var(--danger)';
+        
+        this.enemiesToSpawn = [];
+        const count = 5 + Math.floor(this.wave * 1.5);
+        const types = Object.keys(ENEMIES);
+        
+        let availableTypes = 1;
+        if (this.wave > 2) availableTypes = 3;
+        if (this.wave > 4) availableTypes = 5;
+        if (this.wave > 6) availableTypes = types.length;
+
+        for (let i = 0; i < count; i++) {
+            let typeKey = types[Math.floor(Math.random() * availableTypes)];
+            if (i > 0 && Math.random() < 0.6) typeKey = this.enemiesToSpawn[i-1].type;
+            this.enemiesToSpawn.push({ type: typeKey, delay: 30 + Math.random() * 60 });
+        }
+        Sound.alert();
+    },
+    
+    changeWeather: function() {
+        this.weather = WEATHER_TYPES[Math.floor(Math.random() * WEATHER_TYPES.length)];
+        const el = document.getElementById('weather-indicator');
+        el.innerHTML = `WEATHER: ${this.weather.name} | VISIBILITY: ${this.weather.visText}`;
+        if (this.weather.name === 'FOG') el.style.color = '#aae';
+        else if (this.weather.name === 'SANDSTORM') el.style.color = '#da8';
+        else el.style.color = '#fff';
+    },
+    
+    endWave: function() {
+        this.waveActive = false;
+        document.getElementById('next-wave-btn').disabled = false;
+        document.getElementById('next-wave-btn').innerText = "INITIATE NEXT WAVE";
+        document.getElementById('wave-val').innerText = "HOLDING PATTERN";
+        document.getElementById('wave-val').style.color = '#fff';
+        this.showAAR();
+    },
+    
+    showAAR: function() {
+        const aar = document.getElementById('aar-screen');
+        const log = document.getElementById('aar-log');
+        aar.classList.remove('hidden');
+        document.getElementById('modal-overlay').classList.remove('hidden');
+        log.innerHTML = `
+            <p>> WAVE ${this.wave} CONCLUDED</p>
+            <p>> WEATHER: ${this.weather.name}</p>
+            <p>> LOGISTICS REMAINING: ${Math.floor(this.logistics)}</p>
+            <p>> BASE INTEGRITY: ${Math.floor(this.baseHealth)}%</p>
+            <hr>
+            <p>INTELLIGENCE REPORT:</p>
+            <p>New unidentified contacts detected. Recommend visual confirmation.</p>
+        `;
+        this.state = 'MENU';
+    },
+    
+    closeAAR: function() {
+        document.getElementById('aar-screen').classList.add('hidden');
+        document.getElementById('modal-overlay').classList.add('hidden');
+        this.state = 'PLAY';
+    },
+
+    spawnEnemy: function(typeKey) {
+        const stats = ENEMIES[typeKey];
+        const speed = stats.speed * this.weather.speedMod;
+        this.enemies.push({
+            type: typeKey,
+            x: this.path[0].x,
+            y: this.path[0].y,
+            pathIndex: 0,
+            hp: stats.hp,
+            maxHp: stats.hp,
+            speed: speed,
+            baseSpeed: speed,
+            suppression: 0,
+            hidden: stats.hidden,
+            identified: false,
+            id: Math.random(),
+            slowTimer: 0
+        });
+    },
+    
+    loop: function() {
+        if (this.state === 'PLAY') {
+            this.update();
+        }
+        this.draw();
+        this.time++;
+        requestAnimationFrame(() => this.loop());
+    },
+    
+    update: function() {
+        // Spawning
+        if (this.waveActive && this.enemiesToSpawn.length > 0) {
+            if (this.spawnTimer <= 0) {
+                const next = this.enemiesToSpawn.shift();
+                this.spawnEnemy(next.type);
+                this.spawnTimer = next.delay;
+            } else { this.spawnTimer--; }
+        } else if (this.waveActive && this.enemies.length === 0 && this.enemiesToSpawn.length === 0) {
+            this.endWave();
+        }
+        
+        // Update Enemies
+        for (let i = this.enemies.length - 1; i >= 0; i--) {
+            let e = this.enemies[i];
+            let target = this.path[e.pathIndex + 1];
+            if (!target) {
+                this.baseHealth -= 10;
+                Sound.playNoise(0.5, 0.5);
+                this.addFloatText("BREACH!", this.width - 100, this.height/2, '#f00');
+                this.enemies.splice(i, 1);
+                if (this.baseHealth <= 0) {
+                    this.state = 'GAMEOVER';
+                    document.getElementById('game-over-screen').classList.remove('hidden');
+                    document.getElementById('modal-overlay').classList.remove('hidden');
+                }
+                continue;
+            }
+            
+            let dx = target.x - e.x;
+            let dy = target.y - e.y;
+            let dist = Math.sqrt(dx*dx + dy*dy);
+            
+            let speedMod = 1.0;
+            if (e.suppression > 50) speedMod = 0.5;
+            if (e.suppression > 90) speedMod = 0.2;
+            if (e.slowTimer > 0) { speedMod *= 0.6; e.slowTimer--; }
+            
+            let moveStep = e.speed * speedMod;
+            e.x += (dx / dist) * moveStep;
+            e.y += (dy / dist) * moveStep;
+            if (e.suppression > 0) e.suppression -= 0.5;
+            if (dist < moveStep) e.pathIndex++;
+        }
+        
+        // Update Friendlies & Jets
+        this.updateFriendlies();
+        this.updateJets();
+        
+        // Update Towers
+        this.towers.forEach(t => {
+            if (t.cooldown > 0) t.cooldown--;
+            
+            // Special Tower Logic
+            if (t.type === 'SUPPLY') {
+                if (this.waveActive && t.cooldown <= 0 && t.ammo > 0) {
+                    this.logistics += 15;
+                    t.ammo--;
+                    t.cooldown = t.maxCooldown;
+                    this.addFloatText("+15", t.x, t.y - 20, '#648dd9');
+                    Sound.playTone(800, 'sine', 0.05, 0.05); 
+                }
+                return;
+            }
+            if (t.type === 'BARRACKS') {
+                if (this.waveActive && t.cooldown <= 0 && t.ammo > 0) {
+                    t.ammo--; // Reduce "Squads" count
+                    t.cooldown = t.maxCooldown;
+                    this.spawnFriendly();
+                }
+                return;
+            }
+            if (t.type === 'AIRPORT') {
+                if (this.waveActive && t.ammo > 0 && !this.jets.find(j => j.parent === t)) {
+                     // Launch Jet if not already flying for this airport
+                     t.ammo--;
+                     this.spawnJet(t);
+                }
+                return;
+            }
+
+            // Standard Fire Logic
+            if (t.ammo > 0 && t.cooldown <= 0) {
+                let effectiveRange = t.range * this.weather.rangeMod;
+                if (t.buffed) effectiveRange *= 1.2;
+                
+                let target = null;
+                let minDist = Infinity;
+                
+                for (let e of this.enemies) {
+                    // Hidden Unit Check: Only OP and Mortar can interact with Hidden
+                    if (e.hidden && t.type !== 'OP' && t.type !== 'MORTAR') continue;
+                    
+                    let dist = Math.sqrt((e.x - t.x)**2 + (e.y - t.y)**2);
+                    if (dist <= effectiveRange) {
+                        if (dist < minDist) { minDist = dist; target = e; }
+                        
+                        if (t.type === 'OP' && e.hidden) {
+                            e.hidden = false;
+                            e.identified = true;
+                            this.addFloatText("DETECTED", e.x, e.y - 20, '#8f8');
+                        }
+                    }
+                }
+                
+                if (target && t.type !== 'OP') {
+                    this.fireTower(t, target);
+                }
+            }
+        });
+        
+        // Update Projectiles
+        for (let i = this.projectiles.length - 1; i >= 0; i--) {
+            let p = this.projectiles[i];
+            
+            if (p.type === 'arc') {
+                p.progress += p.speed;
+                if (p.progress >= 1) {
+                    this.explode(p.tx, p.ty, 60, p.damage, p.suppression);
+                    this.projectiles.splice(i, 1);
+                } else {
+                    p.x = p.startX + (p.tx - p.startX) * p.progress;
+                    let linearY = p.startY + (p.ty - p.startY) * p.progress;
+                    let arcY = Math.sin(p.progress * Math.PI) * p.arcHeight;
+                    p.y = linearY - arcY;
+                }
+            } else if (p.homing) {
+                // If target dead, kill projectile
+                if (this.enemies.indexOf(p.target) === -1) { this.projectiles.splice(i, 1); continue; }
+                
+                let dx = p.target.x - p.x;
+                let dy = p.target.y - p.y;
+                let dist = Math.sqrt(dx*dx + dy*dy);
+                if (dist < p.speed) {
+                    this.hitEnemy(p.target, p.damage, p.suppression, p.special);
+                    this.projectiles.splice(i, 1);
+                } else {
+                    p.x += (dx/dist) * p.speed;
+                    p.y += (dy/dist) * p.speed;
+                }
+            }
+        }
+        
+        // Update Particles & Text
+        for (let i = this.particles.length - 1; i >= 0; i--) {
+            let p = this.particles[i];
+            p.life--; p.x += p.vx; p.y += p.vy;
+            if (p.life <= 0) this.particles.splice(i, 1);
+        }
+        for (let i = this.floatText.length - 1; i >= 0; i--) {
+            let f = this.floatText[i];
+            f.life--; f.y -= 0.5;
+            if (f.life <= 0) this.floatText.splice(i, 1);
+        }
+        
+        // UI Updates
+        document.getElementById('logistics-val').innerText = Math.floor(this.logistics);
+        document.getElementById('hp-val').innerText = Math.floor(this.baseHealth) + "%";
+        
+        // Buffer towers logic
+        this.towers.forEach(t => t.buffed = false);
+        this.towers.forEach(t => {
+            if (t.type === 'OP') {
+                this.towers.forEach(other => {
+                    if (t !== other) {
+                        let d = Math.sqrt((t.x - other.x)**2 + (t.y - other.y)**2);
+                        if (d < t.range) other.buffed = true;
+                    }
+                })
+            }
+        })
+    },
+
+    spawnFriendly: function() {
+        let startIndex = this.path.length - 1;
+        let pos = this.path[startIndex];
+        this.friendlies.push({
+            x: pos.x, y: pos.y,
+            pathIndex: startIndex,
+            speed: 1.0,
+            range: 100, 
+            cooldown: 0,
+            hp: 100,
+            maxHp: 100
+        });
+        Sound.build();
+    },
+
+    updateFriendlies: function() {
+        for (let i = this.friendlies.length - 1; i >= 0; i--) {
+            let f = this.friendlies[i];
+            
+            // Combat Logic
+            if (f.cooldown > 0) f.cooldown--;
+            let fired = false;
+            
+            // Look for enemy
+            for (let e of this.enemies) {
+                let d = Math.sqrt((e.x - f.x)**2 + (e.y - f.y)**2);
+                if (d < f.range) {
+                    // Engage
+                    if (f.cooldown <= 0) {
+                        this.projectiles.push({
+                            x: f.x, y: f.y,
+                            target: e,
+                            damage: 5,
+                            suppression: 5,
+                            speed: 10,
+                            homing: true,
+                            color: '#8f8'
+                        });
+                        f.cooldown = 40;
+                        Sound.playTone(400, 'square', 0.05, 0.05);
+                    }
+                    fired = true;
+                }
+                
+                // Melee contact
+                if (d < 20) {
+                     f.hp -= 2;
+                     e.hp -= 2;
+                     this.spawnParticles((f.x+e.x)/2, (f.y+e.y)/2, 1, '#f00');
+                }
+            }
+
+            if (f.hp <= 0) {
+                this.friendlies.splice(i, 1);
+                continue;
+            }
+
+            // Move if not firing (Stop to shoot logic)
+            // AND ensure they don't walk off the map. Stop at index 1 or 0.
+            if (!fired && f.pathIndex > 0) {
+                let target = this.path[f.pathIndex - 1];
+                let dx = target.x - f.x;
+                let dy = target.y - f.y;
+                let dist = Math.sqrt(dx*dx + dy*dy);
+                let moveStep = f.speed;
+                f.x += (dx/dist) * moveStep;
+                f.y += (dy/dist) * moveStep;
+                if (dist < moveStep) f.pathIndex--;
+            }
+        }
+    },
+
+    spawnJet: function(parentTower) {
+        this.jets.push({
+            x: this.width / 2, y: this.height / 2, 
+            vx: (Math.random() - 0.5) * 4,
+            vy: (Math.random() - 0.5) * 4,
+            angle: 0,
+            state: 'ROAM', // ROAM, ATTACK, BREAK
+            target: null,
+            parent: parentTower
+        });
+        Sound.playTone(200, 'sawtooth', 1.0, 0.05); 
+    },
+
+    updateJets: function() {
+        for (let i = this.jets.length - 1; i >= 0; i--) {
+            let j = this.jets[i];
+            
+            // State Machine
+            if (j.state === 'ROAM') {
+                // Fly loosely
+                if (Math.random() < 0.05) {
+                    j.vx += (Math.random() - 0.5) * 0.5;
+                    j.vy += (Math.random() - 0.5) * 0.5;
+                }
+                // Keep bounds
+                if (j.x < 100) j.vx += 0.2;
+                if (j.x > this.width-100) j.vx -= 0.2;
+                if (j.y < 100) j.vy += 0.2;
+                if (j.y > this.height-100) j.vy -= 0.2;
+
+                // Look for target
+                if (this.enemies.length > 0 && Math.random() < 0.02) {
+                    j.target = this.enemies[Math.floor(Math.random() * this.enemies.length)];
+                    j.state = 'ATTACK';
+                }
+            } else if (j.state === 'ATTACK') {
+                if (this.enemies.indexOf(j.target) === -1) {
+                    j.state = 'ROAM';
+                } else {
+                    // Steer towards target
+                    let dx = j.target.x - j.x;
+                    let dy = j.target.y - j.y;
+                    let dist = Math.sqrt(dx*dx + dy*dy);
+                    
+                    // Normalize
+                    let ax = dx / dist;
+                    let ay = dy / dist;
+                    
+                    j.vx += ax * 0.3;
+                    j.vy += ay * 0.3;
+
+                    // Fire if close and aligned
+                    if (dist < 200 && Math.random() < 0.2) {
+                        this.projectiles.push({
+                            x: j.x, y: j.y,
+                            target: j.target,
+                            damage: 10,
+                            suppression: 20,
+                            speed: 20,
+                            homing: true,
+                            color: '#aaddff'
+                        });
+                        Sound.playNoise(0.1, 0.1);
+                        if (Math.random() < 0.1) j.state = 'BREAK';
+                    }
+                }
+            } else if (j.state === 'BREAK') {
+                // Fly fast away
+                if (Math.random() < 0.05) j.state = 'ROAM';
+            }
+
+            // Limit speed
+            let speed = Math.sqrt(j.vx*j.vx + j.vy*j.vy);
+            let maxSpeed = 4;
+            if (speed > maxSpeed) {
+                j.vx = (j.vx/speed) * maxSpeed;
+                j.vy = (j.vy/speed) * maxSpeed;
+            }
+
+            j.x += j.vx;
+            j.y += j.vy;
+            j.angle = Math.atan2(j.vy, j.vx);
+
+            // Remove if wave over
+            if (!this.waveActive) {
+                this.jets.splice(i, 1);
+            }
+        }
+    },
+    
+    fireTower: function(tower, target) {
+        tower.cooldown = tower.maxCooldown;
+        tower.ammo--;
+        
+        if (tower.type === 'MORTAR') {
+             this.projectiles.push({
+                type: 'arc',
+                startX: tower.x, startY: tower.y,
+                tx: target.x, ty: target.y,
+                x: tower.x, y: tower.y,
+                damage: tower.damage,
+                suppression: 40,
+                speed: 0.02,
+                progress: 0,
+                arcHeight: 150,
+                color: '#fff'
+            });
+            Sound.shoot('mortar');
+        } else {
+            // Direct Fire
+            let color = '#ffaa00';
+            let speed = 15;
+            let special = null;
+            let suppression = 0;
+            
+            if (tower.type === 'HMG') { suppression = 15; }
+            if (tower.type === 'EW') { color = '#a0f'; special = 'slow'; }
+            if (tower.type === 'SNIPER') { color = '#fffaaa'; special = 'ap'; }
+            if (tower.type === 'ATGM') { color = '#ff4400'; special = 'ap'; speed = 8; }
+            if (tower.type === 'AUTOCANNON') { color = '#ffcc00'; speed = 20; }
+
+            this.projectiles.push({
+                x: tower.x, y: tower.y,
+                target: target,
+                damage: tower.damage,
+                suppression: suppression,
+                speed: speed,
+                homing: true,
+                color: color,
+                special: special
+            });
+            
+            let snd = 'sniper';
+            if (tower.type === 'HMG') snd = 'hmg';
+            if (tower.type === 'AUTOCANNON') snd = 'autocannon';
+            if (tower.type === 'ATGM') snd = 'atgm';
+            Sound.shoot(snd);
+        }
+    },
+    
+    hitEnemy: function(enemy, damage, suppression, special) {
+        if (ENEMIES[enemy.type].armor && special !== 'ap') {
+            damage *= (1 - ENEMIES[enemy.type].armor);
+        }
+        
+        enemy.hp -= damage;
+        enemy.suppression = Math.min(100, enemy.suppression + suppression);
+        
+        // Suppression Sharing Logic
+        if (suppression > 0) {
+            this.enemies.forEach(other => {
+                if (other !== enemy) {
+                    let d = Math.sqrt((other.x - enemy.x)**2 + (other.y - enemy.y)**2);
+                    if (d < 120) { // Sharing range
+                        other.suppression = Math.min(100, other.suppression + (suppression * 0.5));
+                    }
+                }
+            });
+        }
+        
+        if (damage > 0) enemy.identified = true;
+        if (special === 'slow') enemy.slowTimer = 60;
+
+        this.spawnParticles(enemy.x, enemy.y, 3, '#fff');
+        
+        if (enemy.hp <= 0) {
+            this.killEnemy(enemy);
+        } else {
+            Sound.hit();
+        }
+    },
+    
+    explode: function(x, y, radius, damage, suppression) {
+        this.spawnParticles(x, y, 15, '#fa0');
+        Sound.playNoise(0.3, 0.4);
+        
+        this.ctx.translate(Math.random()*4-2, Math.random()*4-2);
+        setTimeout(() => this.ctx.setTransform(1,0,0,1,0,0), 50);
+
+        for (let i = this.enemies.length - 1; i >= 0; i--) {
+            let e = this.enemies[i];
+            let d = Math.sqrt((e.x - x)**2 + (e.y - y)**2);
+            if (d < radius) {
+                this.hitEnemy(e, damage, suppression, null);
+            }
+        }
+    },
+    
+    killEnemy: function(enemy) {
+        if (!this.intelUnlocked.includes(enemy.type)) {
+            this.intelUnlocked.push(enemy.type);
+            this.showIntel(enemy.type);
+        }
+
+        const idx = this.enemies.indexOf(enemy);
+        if (idx > -1) {
+            this.enemies.splice(idx, 1);
+            this.logistics += ENEMIES[enemy.type].reward;
+            this.addFloatText(`+${ENEMIES[enemy.type].reward}`, enemy.x, enemy.y, '#ff0');
+        }
+    },
+
+    showIntel: function(type) {
+        const stats = ENEMIES[type];
+        document.getElementById('intel-title').innerText = `NEW INTEL: ${stats.name}`;
+        document.getElementById('intel-desc').innerText = stats.desc;
+        document.getElementById('intel-hp').innerText = `HP: ${stats.hp}`;
+        document.getElementById('intel-speed').innerText = `SPD: ${stats.speed}`;
+        document.getElementById('intel-armor').innerText = `ARM: ${stats.armor ? (stats.armor*100)+'%' : '0%'}`;
+        document.getElementById('intel-reward').innerText = `RWD: ${stats.reward}`;
+        
+        document.getElementById('intel-screen').classList.remove('hidden');
+        document.getElementById('modal-overlay').classList.remove('hidden');
+        this.state = 'INTEL'; 
+    },
+
+    closeIntel: function() {
+        document.getElementById('intel-screen').classList.add('hidden');
+        document.getElementById('modal-overlay').classList.add('hidden');
+        this.state = 'PLAY';
+    },
+    
+    spawnParticles: function(x, y, count, color) {
+        for(let i=0; i<count; i++) {
+            this.particles.push({
+                x: x, y: y,
+                vx: (Math.random() - 0.5) * 4,
+                vy: (Math.random() - 0.5) * 4,
+                life: 20 + Math.random() * 10,
+                color: color
+            });
+        }
+    },
+    
+    addFloatText: function(text, x, y, color) {
+        this.floatText.push({ text: text, x: x, y: y, color: color, life: 60 });
+    },
+
+    draw: function() {
+        this.ctx.fillStyle = '#0f1112';
+        this.ctx.fillRect(0, 0, this.width, this.height);
+        
+        // Grid
+        this.ctx.strokeStyle = '#1a1d1f';
+        this.ctx.lineWidth = 1;
+        this.ctx.beginPath();
+        for(let i=0; i<this.width; i+=40) { this.ctx.moveTo(i,0); this.ctx.lineTo(i,this.height); }
+        for(let i=0; i<this.height; i+=40) { this.ctx.moveTo(0,i); this.ctx.lineTo(this.width,i); }
+        this.ctx.stroke();
+
+        // Path
+        this.ctx.strokeStyle = '#25282b';
+        this.ctx.lineWidth = 40;
+        this.ctx.lineCap = 'round';
+        this.ctx.lineJoin = 'round';
+        this.ctx.beginPath();
+        if(this.path.length > 0) this.ctx.moveTo(this.path[0].x, this.path[0].y);
+        for(let i=1; i<this.path.length; i++) this.ctx.lineTo(this.path[i].x, this.path[i].y);
+        this.ctx.stroke();
+        
+        this.ctx.strokeStyle = '#3a3e42';
+        this.ctx.lineWidth = 2;
+        this.ctx.setLineDash([10, 15]);
+        this.ctx.stroke();
+        this.ctx.setLineDash([]);
+        
+        // Placement Preview
+        if (this.selectedTowerType) {
+            this.ctx.strokeStyle = 'rgba(255, 255, 255, 0.2)';
+            this.ctx.fillStyle = 'rgba(255, 255, 255, 0.05)';
+            const range = TOWERS[this.selectedTowerType].range * this.weather.rangeMod;
+            this.ctx.beginPath();
+            this.ctx.arc(this.mouseX, this.mouseY, range, 0, Math.PI*2);
+            this.ctx.fill();
+            this.ctx.stroke();
+            const snapX = Math.round(this.mouseX / TILE_SIZE) * TILE_SIZE;
+            const snapY = Math.round(this.mouseY / TILE_SIZE) * TILE_SIZE;
+            this.ctx.fillStyle = this.isValidPlacement(snapX, snapY) ? 'rgba(100, 255, 100, 0.5)' : 'rgba(255, 100, 100, 0.5)';
+            this.ctx.fillRect(snapX - 10, snapY - 10, 20, 20);
+        }
+
+        // Towers
+        this.towers.forEach(t => {
+            const data = TOWERS[t.type];
+            this.ctx.fillStyle = '#2b2e31';
+            this.ctx.fillRect(t.x - 15, t.y - 15, 30, 30);
+            this.ctx.strokeStyle = t.ammo <= 0 ? '#f00' : data.color;
+            this.ctx.lineWidth = 2;
+            this.ctx.strokeRect(t.x - 15, t.y - 15, 30, 30);
+            this.ctx.fillStyle = t.ammo <= 0 ? '#555' : '#fff';
+            this.ctx.font = '16px Arial';
+            this.ctx.textAlign = 'center';
+            this.ctx.textBaseline = 'middle';
+            this.ctx.fillText(data.symbol, t.x, t.y);
+            const ammoPct = t.ammo / t.maxAmmo;
+            this.ctx.fillStyle = '#333';
+            this.ctx.fillRect(t.x - 15, t.y + 20, 30, 4);
+            this.ctx.fillStyle = ammoPct < 0.2 ? '#f00' : '#0f0';
+            this.ctx.fillRect(t.x - 15, t.y + 20, 30 * ammoPct, 4);
+
+            if (this.selectedTower === t) {
+                this.ctx.strokeStyle = '#fff';
+                this.ctx.beginPath();
+                this.ctx.arc(t.x, t.y, 25, 0, Math.PI*2);
+                this.ctx.stroke();
+                this.ctx.strokeStyle = 'rgba(255,255,255,0.1)';
+                let r = data.range * this.weather.rangeMod;
+                if(t.buffed) r*=1.2;
+                this.ctx.beginPath();
+                this.ctx.arc(t.x, t.y, r, 0, Math.PI*2);
+                this.ctx.stroke();
+            }
+            if (t.buffed) {
+                this.ctx.fillStyle = '#64d9b9';
+                this.ctx.beginPath();
+                this.ctx.arc(t.x + 15, t.y - 15, 4, 0, Math.PI*2);
+                this.ctx.fill();
+            }
+        });
+        
+        // Friendlies
+        this.friendlies.forEach(f => {
+            this.ctx.fillStyle = '#6f6';
+            this.ctx.beginPath();
+            this.ctx.arc(f.x, f.y, 4, 0, Math.PI*2);
+            this.ctx.fill();
+        });
+
+        // Enemies
+        this.enemies.forEach(e => {
+            const stats = ENEMIES[e.type];
+            this.ctx.save();
+            this.ctx.translate(e.x, e.y);
+            if (!e.identified && e.hidden) {
+                this.ctx.fillStyle = 'rgba(150, 150, 150, 0.5)';
+                this.ctx.beginPath();
+                this.ctx.moveTo(0, -8); this.ctx.lineTo(8, 0); this.ctx.lineTo(0, 8); this.ctx.lineTo(-8, 0);
+                this.ctx.fill();
+                this.ctx.fillStyle = '#fff';
+                this.ctx.font = '10px monospace';
+                this.ctx.fillText("?", -3, 3);
+            } else {
+                this.ctx.fillStyle = stats.color;
+                this.ctx.beginPath();
+                this.ctx.moveTo(0, -10); this.ctx.lineTo(10, 0); this.ctx.lineTo(0, 10); this.ctx.lineTo(-10, 0);
+                this.ctx.fill();
+                if (e.suppression > 0) {
+                    this.ctx.fillStyle = '#0af';
+                    this.ctx.fillRect(-10, -15, 20 * (e.suppression/100), 2);
+                }
+                this.ctx.fillStyle = '#f00';
+                this.ctx.fillRect(-10, -18, 20, 2);
+                this.ctx.fillStyle = '#0f0';
+                this.ctx.fillRect(-10, -18, 20 * (e.hp/e.maxHp), 2);
+            }
+            this.ctx.restore();
+        });
+
+        // Jets
+        this.jets.forEach(j => {
+            this.ctx.save();
+            this.ctx.translate(j.x, j.y);
+            this.ctx.rotate(j.angle + Math.PI/2);
+            this.ctx.fillStyle = '#aaddff';
+            this.ctx.beginPath();
+            this.ctx.moveTo(0, -10); this.ctx.lineTo(8, 10); this.ctx.lineTo(0, 5); this.ctx.lineTo(-8, 10);
+            this.ctx.fill();
+            this.ctx.restore();
+        });
+        
+        // Projectiles
+        this.projectiles.forEach(p => {
+            if (p.type === 'arc') {
+                let shadowX = p.startX + (p.tx - p.startX) * p.progress;
+                let shadowY = p.startY + (p.ty - p.startY) * p.progress;
+                this.ctx.fillStyle = 'rgba(0,0,0,0.5)';
+                this.ctx.beginPath(); this.ctx.arc(shadowX, shadowY, 3, 0, Math.PI*2); this.ctx.fill();
+                this.ctx.fillStyle = '#fff';
+                this.ctx.beginPath(); this.ctx.arc(p.x, p.y, 3, 0, Math.PI*2); this.ctx.fill();
+            } else {
+                this.ctx.strokeStyle = p.color || '#ff0';
+                this.ctx.lineWidth = 2;
+                this.ctx.beginPath();
+                this.ctx.moveTo(p.x, p.y);
+                this.ctx.lineTo(p.x - (p.x - (p.homing ? p.target.x : p.x))*0.2, p.y - (p.y - (p.homing ? p.target.y : p.y))*0.2);
+                this.ctx.stroke();
+            }
+        });
+        
+        // Particles & Text
+        this.particles.forEach(p => {
+            this.ctx.fillStyle = p.color;
+            this.ctx.globalAlpha = p.life / 30;
+            this.ctx.fillRect(p.x, p.y, 2, 2);
+            this.ctx.globalAlpha = 1;
+        });
+        this.ctx.font = 'bold 12px monospace';
+        this.floatText.forEach(f => {
+            this.ctx.fillStyle = f.color;
+            this.ctx.fillText(f.text, f.x, f.y);
+        });
+        
+        // Base
+        this.ctx.fillStyle = '#5e7c8d';
+        this.ctx.fillRect(this.width - 50, this.height/2 - 25, 50, 50);
+        this.ctx.fillStyle = '#fff';
+        this.ctx.font = '10px monospace';
+        this.ctx.fillText("FOB", this.width - 40, this.height/2);
+    },
+    
+    handleMouseMove: function(e) {
+        const rect = this.canvas.getBoundingClientRect();
+        this.mouseX = e.clientX - rect.left;
+        this.mouseY = e.clientY - rect.top;
+    },
+    
+    handleClick: function(e) {
+        if (this.state !== 'PLAY') return;
+        
+        if (this.selectedTowerType) {
+            const snapX = Math.round(this.mouseX / TILE_SIZE) * TILE_SIZE;
+            const snapY = Math.round(this.mouseY / TILE_SIZE) * TILE_SIZE;
+            if (this.isValidPlacement(snapX, snapY)) {
+                this.placeTower(snapX, snapY, this.selectedTowerType);
+                if (!e.shiftKey) {
+                    this.selectedTowerType = null;
+                    document.querySelectorAll('.btn').forEach(b => b.classList.remove('active'));
+                }
+            } else {
+                Sound.playTone(150, 'sawtooth', 0.2);
+            }
+            return;
+        }
+        
+        let clickedTower = null;
+        this.towers.forEach(t => {
+            if (Math.abs(t.x - this.mouseX) < 20 && Math.abs(t.y - this.mouseY) < 20) {
+                clickedTower = t;
+            }
+        });
+        
+        if (clickedTower) {
+            this.selectedTower = clickedTower;
+            if (clickedTower.ammo < clickedTower.maxAmmo) {
+                const cost = Math.floor(TOWERS[clickedTower.type].cost * 0.2);
+                if (this.logistics >= cost) {
+                    this.logistics -= cost;
+                    clickedTower.ammo = clickedTower.maxAmmo;
+                    Sound.build();
+                    this.addFloatText("RELOAD", clickedTower.x, clickedTower.y - 20, '#0ff');
+                } else {
+                    this.addFloatText(`NEED ${cost} SUP`, clickedTower.x, clickedTower.y - 20, '#f00');
+                }
+            }
+        } else {
+            this.selectedTower = null;
+        }
+    },
+    
+    handleKey: function(e) {
+        if (e.key === 'Escape') {
+            this.selectedTowerType = null;
+            this.selectedTower = null;
+            document.querySelectorAll('.btn').forEach(b => b.classList.remove('active'));
+        }
+    },
+    
+    isValidPlacement: function(x, y) {
+        if (this.logistics < TOWERS[this.selectedTowerType].cost) return false;
+        if (x < 20 || x > this.width - 20 || y < 20 || y > this.height - 20) return false;
+        
+        for(let i=0; i<this.path.length-1; i++) {
+            let p1 = this.path[i];
+            let p2 = this.path[i+1];
+            let A = x - p1.x;
+            let B = y - p1.y;
+            let C = p2.x - p1.x;
+            let D = p2.y - p1.y;
+            let dot = A * C + B * D;
+            let len_sq = C * C + D * D;
+            let param = -1;
+            if (len_sq != 0) param = dot / len_sq;
+            let xx, yy;
+            if (param < 0) { xx = p1.x; yy = p1.y; }
+            else if (param > 1) { xx = p2.x; yy = p2.y; }
+            else { xx = p1.x + param * C; yy = p1.y + param * D; }
+            let dx = x - xx;
+            let dy = y - yy;
+            if (Math.sqrt(dx*dx + dy*dy) < 30) return false; 
+        }
+        
+        for(let t of this.towers) {
+            if (Math.abs(t.x - x) < 30 && Math.abs(t.y - y) < 30) return false;
+        }
+        
+        return true;
+    },
+    
+    placeTower: function(x, y, typeKey) {
+        const data = TOWERS[typeKey];
+        this.logistics -= data.cost;
+        
+        this.towers.push({
+            x: x, y: y,
+            type: typeKey,
+            range: data.range,
+            damage: data.damage,
+            maxCooldown: data.rate,
+            cooldown: 0,
+            ammo: data.ammoMax,
+            maxAmmo: data.ammoMax,
+            buffed: false
+        });
+        
+        Sound.build();
+        this.spawnParticles(x, y, 10, '#fff');
+    }
+};
+// Start logic when ready
+// game.init() called by button
+</script>
+</body>
+</html>

@@ -1,0 +1,1197 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Task Force Command: Red Horizon</title>
+    <style>
+        :root {
+            --bg-color: #050a10;
+            --grid-line: #162230;
+            --text-color: #39ff14; /* Terminal Green */
+            --text-dim: #238636;
+            --ui-bg: #0d1117;
+            --accent: #58a6ff;
+            --alert: #ff3333;
+            --warning: #d29922;
+        }
+
+        body {
+            margin: 0;
+            background-color: var(--bg-color);
+            color: var(--text-color);
+            font-family: 'Courier New', Courier, monospace;
+            display: flex;
+            height: 100vh;
+            overflow: hidden;
+            user-select: none;
+        }
+
+        /* CRT Overlay Effect */
+        #crt-overlay {
+            position: absolute;
+            top: 0; left: 0; width: 100%; height: 100%;
+            background: linear-gradient(rgba(18, 16, 16, 0) 50%, rgba(0, 0, 0, 0.25) 50%), linear-gradient(90deg, rgba(255, 0, 0, 0.06), rgba(0, 255, 0, 0.02), rgba(0, 0, 255, 0.06));
+            background-size: 100% 2px, 3px 100%;
+            pointer-events: none;
+            z-index: 999;
+            box-shadow: inset 0 0 50px rgba(0,0,0,0.7);
+        }
+
+        /* Layout */
+        #game-container {
+            display: flex;
+            width: 100%;
+            height: 100%;
+            position: relative;
+            z-index: 1;
+        }
+
+        #map-area {
+            flex-grow: 1;
+            position: relative;
+            background-color: #020408;
+            overflow: hidden;
+            cursor: crosshair;
+        }
+
+        #sidebar {
+            width: 320px;
+            min-width: 250px;
+            max-width: 35vw;
+            background-color: var(--ui-bg);
+            border-left: 1px solid var(--text-dim);
+            display: flex;
+            flex-direction: column;
+            padding: 10px;
+            box-shadow: -5px 0 15px rgba(0,0,0,0.8);
+            z-index: 10;
+            flex-shrink: 0;
+        }
+
+        /* UI Elements */
+        h1 { margin: 0 0 10px 0; font-size: 18px; border-bottom: 1px solid var(--text-dim); padding-bottom: 5px; color: var(--accent); text-shadow: 0 0 5px var(--accent); }
+        h2 { margin: 10px 0 5px 0; font-size: 14px; color: #fff; background: #21262d; padding: 2px 5px; }
+
+        .panel { margin-bottom: 15px; }
+        .stat-row { display: flex; justify-content: space-between; font-size: 12px; margin-bottom: 4px; }
+
+        .btn {
+            background: var(--ui-bg);
+            border: 1px solid var(--text-dim);
+            color: var(--text-color);
+            padding: 8px;
+            cursor: pointer;
+            width: 100%;
+            margin-bottom: 5px;
+            font-family: inherit;
+            text-transform: uppercase;
+            font-size: 11px;
+            transition: all 0.2s;
+        }
+        .btn:hover:not(:disabled) { background: var(--text-dim); color: #fff; box-shadow: 0 0 8px var(--text-dim); }
+        .btn:disabled { border-color: #333; color: #555; cursor: not-allowed; }
+        .btn-action { border-color: var(--alert); color: var(--alert); }
+        .btn-action:hover:not(:disabled) { background: var(--alert); color: black; box-shadow: 0 0 10px var(--alert); }
+
+        #log-container {
+            flex-grow: 1;
+            border: 1px solid var(--text-dim);
+            background: #000;
+            overflow-y: auto;
+            padding: 5px;
+            font-size: 11px;
+            margin-top: auto;
+            max-height: 40%;
+            font-family: 'Courier New', Courier, monospace;
+        }
+
+        .log-entry { margin-bottom: 4px; border-bottom: 1px solid #111; padding-bottom: 2px; }
+        .log-info { color: #888; }
+        .log-combat { color: var(--alert); font-weight: bold; text-shadow: 0 0 3px var(--alert); }
+        .log-sys { color: var(--accent); }
+
+        #turn-indicator {
+            text-align: center; font-size: 16px; padding: 10px; background: #21262d; margin-bottom: 10px; font-weight: bold; letter-spacing: 1px;
+        }
+        .turn-player { color: var(--accent); text-shadow: 0 0 5px var(--accent); }
+        .turn-enemy { color: var(--alert); text-shadow: 0 0 5px var(--alert); }
+
+        #hover-info {
+            position: absolute; bottom: 10px; left: 10px; background: rgba(0,0,0,0.8);
+            border: 1px solid var(--text-dim); padding: 5px; pointer-events: none; font-size: 12px; z-index: 50;
+        }
+        #controls-hint {
+            position: absolute; top: 10px; left: 10px; color: #666; font-size: 10px;
+            background: rgba(0,0,0,0.5); padding: 2px 5px; pointer-events: none; z-index: 50;
+        }
+    </style>
+</head>
+<body>
+
+<div id="crt-overlay"></div>
+
+<div id="game-container">
+    <div id="map-area">
+        <canvas id="gameCanvas"></canvas>
+        <div id="hover-info">Coords: 0,0</div>
+        <div id="controls-hint">R-Click Drag: Pan | Scroll: Zoom</div>
+    </div>
+
+    <div id="sidebar">
+        <h1>Task Force Command</h1>
+        <div id="turn-indicator" class="turn-player">PLAYER TURN</div>
+
+        <div id="unit-panel" class="panel" style="display:none;">
+            <h2 id="unit-name">Unit Name</h2>
+            <div id="unit-stats"></div>
+            
+            <h2>Orders</h2>
+            <div id="unit-controls">
+                <button id="btn-move" class="btn">Move (M)</button>
+                <div style="display:flex; gap:5px;">
+                    <button id="btn-radar" class="btn">Radar: OFF</button>
+                    <button id="btn-sonar" class="btn">Sonar: OFF</button>
+                </div>
+                <div id="depth-controls" style="display:flex; gap:5px; margin-bottom:5px;">
+                    <button id="btn-depth-up" class="btn">Depth &#9650;</button>
+                    <button id="btn-depth-down" class="btn">Depth &#9660;</button>
+                </div>
+            </div>
+
+            <h2>Weapons</h2>
+            <div id="weapon-controls"></div>
+        </div>
+
+        <div id="no-selection" class="panel">
+            <p style="color:#444; text-align:center; font-style:italic;">-- Awaiting Selection --</p>
+        </div>
+
+        <div class="panel">
+            <button id="btn-end-turn" class="btn" style="background:#21262d; border-color: #fff; padding: 15px;">End Turn</button>
+        </div>
+
+        <h2>Tactical Log</h2>
+        <div id="log-container"></div>
+    </div>
+</div>
+
+<script>
+/**
+ * NAVAL COMBAT SIMULATION V4
+ * Features: Air Sorties, Deep Fire, Stable Triangulation, Fog of War, AI, Untargetable Ghosts
+ */
+
+// --- CONFIGURATION ---
+const MAP_WIDTH = 40;
+const MAP_HEIGHT = 25;
+const COLORS = {
+    water: '#050a10',
+    grid: '#111a26',
+    friendly: '#58a6ff',
+    hostile: '#ff3333',
+    unknown: '#d29922',
+    selection: '#39ff14',
+    path: 'rgba(57, 255, 20, 0.3)',
+    range: 'rgba(255, 51, 51, 0.1)'
+};
+
+// --- GAME STATE ---
+const Game = {
+    canvas: null,
+    ctx: null,
+    
+    // Viewport
+    tileSize: 32,
+    minTileSize: 10,
+    maxTileSize: 120,
+    offsetX: 50,
+    offsetY: 50,
+    isDragging: false,
+    lastMouseX: 0,
+    lastMouseY: 0,
+
+    // Timing
+    lastTime: 0,
+    time: 0, 
+
+    turn: 1,
+    isPlayerTurn: true,
+    selectedUnit: null,
+    actionState: null, 
+    selectedWeapon: null,
+    
+    units: [],
+    grid: [],
+    
+    // Detection Data
+    detectedSignals: [], // Triangulated points {x, y, team}
+    bearingLines: [],    // Single sensor bearings {x1, y1, x2, y2, team}
+    
+    projectiles: [],
+    particles: [],
+    logs: [],
+
+    init() {
+        this.canvas = document.getElementById('gameCanvas');
+        this.ctx = this.canvas.getContext('2d');
+        
+        this.resizeCanvas();
+        window.addEventListener('resize', () => {
+            this.resizeCanvas();
+            this.draw();
+        });
+        
+        // Init Grid
+        for(let x=0; x<MAP_WIDTH; x++) {
+            this.grid[x] = [];
+            for(let y=0; y<MAP_HEIGHT; y++) {
+                this.grid[x][y] = { visible: false, explored: false, lastSeenTurn: -1 };
+            }
+        }
+
+        this.createUnits();
+        this.updateVisibility();
+        this.bindEvents();
+        
+        this.log("Task Force initialized. DEFCON 3.", "sys");
+        this.log("Mission: Locate and destroy enemy carrier group.", "sys");
+        this.log("Intel: EMCON ghosts are untargetable until Hard Lock is achieved.", "info");
+        
+        this.lastTime = performance.now();
+        requestAnimationFrame(this.loop.bind(this));
+        this.updateUI();
+    },
+
+    resizeCanvas() {
+        const parent = this.canvas.parentElement;
+        if(parent) {
+            this.canvas.width = parent.clientWidth;
+            this.canvas.height = parent.clientHeight;
+        }
+    },
+
+    createUnits() {
+        // Player
+        this.units.push(new Unit(0, 'CVN-78 Ford', 'Carrier', 3, 10));
+        this.units.push(new Unit(0, 'DDG-51 Arleigh', 'Destroyer', 5, 8));
+        this.units.push(new Unit(0, 'SSN-774 Virginia', 'Submarine', 12, 10));
+        this.units.push(new Unit(0, 'SSN-775 Texas', 'Submarine', 14, 12));
+
+        // Enemy
+        this.units.push(new Unit(1, 'Kuznetsov', 'Carrier', 36, 12));
+        this.units.push(new Unit(1, 'Slava Class', 'Destroyer', 34, 10));
+        this.units.push(new Unit(1, 'Akula I', 'Submarine', 20, 8));
+        this.units.push(new Unit(1, 'Akula II', 'Submarine', 18, 15));
+    },
+
+    loop(timestamp) {
+        const dt = (timestamp - this.lastTime) / 1000;
+        this.lastTime = timestamp;
+        this.time += dt;
+
+        this.update(dt);
+        this.draw();
+        requestAnimationFrame(this.loop.bind(this));
+    },
+
+    update(dt) {
+        // 1. Interpolate Unit Positions
+        this.units.forEach(u => {
+            const lerpSpeed = 5;
+            u.visX += (u.x - u.visX) * lerpSpeed * dt;
+            u.visY += (u.y - u.visY) * lerpSpeed * dt;
+            u.visHp += (u.hp - u.visHp) * 2 * dt;
+        });
+
+        // 2. Update Projectiles
+        for (let i = this.projectiles.length - 1; i >= 0; i--) {
+            const p = this.projectiles[i];
+            p.t += p.speed * dt;
+            p.currX = p.startX + (p.endX - p.startX) * p.t;
+            p.currY = p.startY + (p.endY - p.startY) * p.t;
+
+            // Trail
+            if(p.type !== 'Air' && Math.random() > 0.5) this.spawnParticle(p.currX, p.currY, p.color, 0.5);
+            else if (p.type === 'Air' && Math.random() > 0.8) this.spawnParticle(p.currX, p.currY, '#fff', 0.8); // Contrail
+
+            if(p.t >= 1) {
+                this.projectiles.splice(i, 1);
+                // Trigger Hit Logic Callback
+                if(p.onHit) p.onHit(p.endX, p.endY);
+            }
+        }
+
+        // 3. Update Particles
+        for (let i = this.particles.length - 1; i >= 0; i--) {
+            const part = this.particles[i];
+            part.life -= dt;
+            part.size += part.expansion * dt;
+            if(part.life <= 0) this.particles.splice(i, 1);
+        }
+    },
+
+    spawnProjectile(startX, startY, endX, endY, color, type, onHit) {
+        const dist = Math.sqrt((startX - endX)**2 + (startY - endY)**2);
+        const tileSpeed = type === 'Gun' ? 20 : (type === 'Missile' ? 8 : (type === 'Air' ? 12 : 4));
+        const duration = dist / tileSpeed;
+
+        this.projectiles.push({
+            startX: startX, startY: startY,
+            endX: endX, endY: endY, 
+            currX: startX, currY: startY,
+            t: 0,
+            speed: 1 / duration, 
+            color: color,
+            type: type,
+            onHit: onHit
+        });
+    },
+
+    spawnExplosion(x, y, color) {
+        this.particles.push({x, y, life: 0.5, maxLife: 0.5, size: 0.2, expansion: 2, color: '#fff', alpha: 1});
+        this.particles.push({x, y, life: 1.0, maxLife: 1.0, size: 0.1, expansion: 1.5, color: color, alpha: 0.8});
+        for(let i=0; i<8; i++) {
+            const angle = Math.random() * Math.PI * 2;
+            const spd = Math.random() * 2;
+            this.particles.push({
+                x, y, vx: Math.cos(angle)*spd, vy: Math.sin(angle)*spd,
+                life: 0.6, maxLife: 0.6, size: 0.1, expansion: -0.1, color: color, alpha: 1, move: true
+            });
+        }
+    },
+
+    spawnParticle(x, y, color, life) {
+        this.particles.push({
+            x: x + (Math.random()-0.5)*0.2, 
+            y: y + (Math.random()-0.5)*0.2, 
+            life: life, maxLife: life, 
+            size: 0.05, expansion: 0, 
+            color: color, alpha: 0.5
+        });
+    },
+
+    draw() {
+        this.ctx.fillStyle = COLORS.water;
+        this.ctx.fillRect(0, 0, this.canvas.width, this.canvas.height);
+
+        // Draw Grid & FOW
+        for(let x=0; x<MAP_WIDTH; x++) {
+            for(let y=0; y<MAP_HEIGHT; y++) {
+                const px = x * this.tileSize + this.offsetX;
+                const py = y * this.tileSize + this.offsetY;
+                
+                if(px < -this.tileSize || py < -this.tileSize || px > this.canvas.width || py > this.canvas.height) continue;
+
+                this.ctx.strokeStyle = COLORS.grid;
+                this.ctx.lineWidth = 1;
+                this.ctx.strokeRect(px, py, this.tileSize, this.tileSize);
+
+                const tile = this.grid[x][y];
+                if(!tile.visible && !tile.explored) {
+                    this.ctx.fillStyle = 'rgba(0,0,0,0.85)';
+                    this.ctx.fillRect(px, py, this.tileSize, this.tileSize);
+                } else if (!tile.visible && tile.explored) {
+                    this.ctx.fillStyle = 'rgba(0,0,0,0.5)';
+                    this.ctx.fillRect(px, py, this.tileSize, this.tileSize);
+                }
+            }
+        }
+
+        // --- LAYER 1: Bearings ---
+        this.bearingLines.forEach(b => {
+            if(b.perceiver === 0) {
+                const sx = b.x1 * this.tileSize + this.tileSize/2 + this.offsetX;
+                const sy = b.y1 * this.tileSize + this.tileSize/2 + this.offsetY;
+                
+                const dx = b.x2 - b.x1;
+                const dy = b.y2 - b.y1;
+                const angle = Math.atan2(dy, dx);
+                const farDist = Math.max(MAP_WIDTH, MAP_HEIGHT) * this.tileSize;
+                const ex = sx + Math.cos(angle) * farDist;
+                const ey = sy + Math.sin(angle) * farDist;
+
+                this.ctx.beginPath();
+                this.ctx.strokeStyle = 'rgba(210, 153, 34, 0.4)';
+                this.ctx.lineWidth = 2;
+                this.ctx.setLineDash([15, 15]);
+                this.ctx.moveTo(sx, sy);
+                this.ctx.lineTo(ex, ey);
+                this.ctx.stroke();
+                this.ctx.setLineDash([]);
+                this.ctx.lineWidth = 1;
+            }
+        });
+
+        // --- LAYER 2: Triangulated Signals ---
+        this.detectedSignals.forEach(sig => {
+            if(sig.perceiver === 0) {
+                const cx = sig.x * this.tileSize + this.tileSize/2 + this.offsetX;
+                const cy = sig.y * this.tileSize + this.tileSize/2 + this.offsetY;
+                
+                const pulse = 1 + Math.sin(this.time * 4) * 0.1;
+                
+                this.ctx.fillStyle = 'rgba(210, 153, 34, 0.9)';
+                this.ctx.font = `bold ${Math.floor(this.tileSize/1.5)}px monospace`;
+                this.ctx.textAlign = 'center';
+                this.ctx.textBaseline = 'middle';
+                this.ctx.fillText("?", cx, cy);
+                
+                this.ctx.strokeStyle = 'rgba(210, 153, 34, 0.4)';
+                this.ctx.beginPath();
+                this.ctx.arc(cx, cy, (this.tileSize/1.5) * pulse, 0, Math.PI*2);
+                this.ctx.stroke();
+            }
+        });
+
+        // --- LAYER 3: Units ---
+        this.units.forEach(u => {
+            const isFriendly = u.team === 0;
+            const isVisible = isFriendly || u.isDetected;
+            
+            if(isVisible && u.visHp > 0.1) {
+                u.draw(this.ctx, this.offsetX, this.offsetY, this.tileSize);
+            }
+        });
+
+        // --- LAYER 4: Projectiles ---
+        this.projectiles.forEach(p => {
+            const cx = p.currX * this.tileSize + this.tileSize/2 + this.offsetX;
+            const cy = p.currY * this.tileSize + this.tileSize/2 + this.offsetY;
+            
+            // Draw Plane (Triangle) or Dot
+            if(p.type === 'Air') {
+                this.ctx.fillStyle = '#fff';
+                // Rotate to face target
+                const dx = p.endX - p.startX;
+                const dy = p.endY - p.startY;
+                const angle = Math.atan2(dy, dx);
+                
+                this.ctx.save();
+                this.ctx.translate(cx, cy);
+                this.ctx.rotate(angle);
+                this.ctx.beginPath();
+                const s = this.tileSize/3;
+                this.ctx.moveTo(s, 0);
+                this.ctx.lineTo(-s/2, s/2);
+                this.ctx.lineTo(-s/2, -s/2);
+                this.ctx.fill();
+                this.ctx.restore();
+
+            } else {
+                this.ctx.fillStyle = p.color;
+                this.ctx.beginPath();
+                this.ctx.arc(cx, cy, this.tileSize/8, 0, Math.PI*2);
+                this.ctx.fill();
+                this.ctx.shadowBlur = 10;
+                this.ctx.shadowColor = p.color;
+                this.ctx.fill();
+                this.ctx.shadowBlur = 0;
+            }
+        });
+
+        // --- LAYER 5: Particles ---
+        this.particles.forEach(p => {
+            const cx = (p.move ? p.x + p.vx * (1-p.life) : p.x) * this.tileSize + this.tileSize/2 + this.offsetX;
+            const cy = (p.move ? p.y + p.vy * (1-p.life) : p.y) * this.tileSize + this.tileSize/2 + this.offsetY;
+            
+            this.ctx.globalAlpha = (p.life / p.maxLife) * p.alpha;
+            this.ctx.fillStyle = p.color;
+            
+            if(p.expansion > 0) {
+                this.ctx.beginPath();
+                this.ctx.arc(cx, cy, p.size * this.tileSize, 0, Math.PI*2);
+                if(p.size > 0.15) { 
+                    this.ctx.strokeStyle = p.color;
+                    this.ctx.lineWidth = 2;
+                    this.ctx.stroke();
+                } else {
+                    this.ctx.fill();
+                }
+            } else {
+                this.ctx.beginPath();
+                this.ctx.arc(cx, cy, p.size * this.tileSize, 0, Math.PI*2);
+                this.ctx.fill();
+            }
+            this.ctx.globalAlpha = 1.0;
+        });
+
+        // --- LAYER 6: UI Overlay ---
+        if(this.selectedUnit && this.isPlayerTurn && this.selectedUnit.visHp > 0) {
+            const u = this.selectedUnit;
+            const cx = u.visX * this.tileSize + this.tileSize/2 + this.offsetX;
+            const cy = u.visY * this.tileSize + this.tileSize/2 + this.offsetY;
+
+            if(this.actionState === 'moving') {
+                this.ctx.beginPath();
+                this.ctx.strokeStyle = COLORS.path;
+                this.ctx.setLineDash([4, 4]);
+                this.ctx.arc(cx, cy, u.movesLeft * this.tileSize, 0, Math.PI*2);
+                this.ctx.stroke();
+                this.ctx.setLineDash([]);
+            }
+
+            if(this.actionState === 'targeting' && this.selectedWeapon) {
+                this.ctx.beginPath();
+                this.ctx.strokeStyle = COLORS.alert;
+                // Calculate Effective Range for display
+                let r = this.selectedWeapon.range;
+                if(u.type === 'Submarine' && u.depth === 2 && this.selectedWeapon.type === 'Torpedo') r -= 2;
+                
+                this.ctx.arc(cx, cy, r * this.tileSize, 0, Math.PI*2);
+                this.ctx.stroke();
+            }
+
+            if(u.sensors.radar) {
+                const isEffective = u.depth < 2;
+                this.ctx.beginPath();
+                this.ctx.strokeStyle = isEffective ? 'rgba(255, 50, 50, 0.4)' : 'rgba(100, 100, 100, 0.2)';
+                this.ctx.setLineDash([10, 5]);
+                const offset = (this.time * 20) % 30;
+                this.ctx.lineDashOffset = -offset;
+                this.ctx.arc(cx, cy, 8 * this.tileSize, 0, Math.PI*2);
+                this.ctx.stroke();
+                this.ctx.setLineDash([]);
+                this.ctx.lineDashOffset = 0;
+            }
+            if(u.sensors.sonar) {
+                this.ctx.beginPath();
+                this.ctx.strokeStyle = 'rgba(50, 255, 255, 0.3)';
+                this.ctx.arc(cx, cy, 4 * this.tileSize, 0, Math.PI*2);
+                this.ctx.stroke();
+            }
+            
+            // Selection Bracket
+            const s = this.tileSize;
+            this.ctx.strokeStyle = COLORS.selection;
+            this.ctx.lineWidth = 1;
+            const b = 5; 
+            this.ctx.beginPath();
+            this.ctx.moveTo(cx-s/2, cy-s/2+b); this.ctx.lineTo(cx-s/2, cy-s/2); this.ctx.lineTo(cx-s/2+b, cy-s/2);
+            this.ctx.moveTo(cx+s/2-b, cy-s/2); this.ctx.lineTo(cx+s/2, cy-s/2); this.ctx.lineTo(cx+s/2, cy-s/2+b);
+            this.ctx.moveTo(cx-s/2, cy+s/2-b); this.ctx.lineTo(cx-s/2, cy+s/2); this.ctx.lineTo(cx-s/2+b, cy+s/2);
+            this.ctx.moveTo(cx+s/2-b, cy+s/2); this.ctx.lineTo(cx+s/2, cy+s/2); this.ctx.lineTo(cx+s/2, cy+s/2-b);
+            this.ctx.stroke();
+        }
+    },
+
+    // --- LOGIC ---
+
+    updateVisibility() {
+        for(let x=0; x<MAP_WIDTH; x++) {
+            for(let y=0; y<MAP_HEIGHT; y++) {
+                this.grid[x][y].visible = false;
+            }
+        }
+        
+        this.units.forEach(u => {
+            u.isDetected = false;
+            u.aiHardLocked = false;
+        });
+        
+        // Clear old detection data
+        this.detectedSignals = [];
+        this.bearingLines = [];
+
+        const playerUnits = this.units.filter(u => u.team === 0 && u.hp > 0);
+        const enemyUnits = this.units.filter(u => u.team === 1 && u.hp > 0);
+
+        // 1. Basic Sensors
+        playerUnits.forEach(u => {
+            this.revealArea(u.x, u.y, 2);
+            if(u.sensors.radar && u.depth < 2) this.revealArea(u.x, u.y, 8);
+            if(u.sensors.sonar) this.revealArea(u.x, u.y, 4);
+        });
+
+        // 2. Hard Detection Check
+        this.checkHardDetections(playerUnits, enemyUnits);
+        this.checkHardDetections(enemyUnits, playerUnits, true);
+
+        // 3. Emcon Processing
+        this.processEmcon(enemyUnits, playerUnits, 0); 
+        this.processEmcon(playerUnits, enemyUnits, 1); 
+    },
+
+    checkHardDetections(seekers, hiders, isAI=false) {
+        seekers.forEach(s => {
+            hiders.forEach(h => {
+                const dist = this.dist(s, h);
+                let detected = false;
+                
+                // Visual
+                if(dist <= 2 && h.depth === 0) detected = true; 
+                
+                // Active Radar (Must be ON and shallow/surface)
+                if(s.sensors.radar && s.depth < 2 && dist <= 8) {
+                    if(h.depth === 0) detected = true;
+                }
+                
+                // Active Sonar (Must be ON)
+                if(s.sensors.sonar && dist <= 4) {
+                    if(h.depth === 0) detected = true;
+                    if(h.depth === 1 && dist <= 2) detected = true;
+                }
+
+                if(detected) {
+                    h.isDetected = true;
+                    if(isAI) h.aiHardLocked = true;
+                }
+            });
+        });
+    },
+
+    processEmcon(emitters, listeners, listenerTeam) {
+        emitters.forEach(emitter => {
+            if(emitter.sensors.radar && emitter.depth < 2) {
+                const detectors = listeners.filter(l => {
+                    const d = this.dist(emitter, l);
+                    return d < 25 && l.depth < 2; 
+                });
+
+                if(detectors.length === 1) {
+                    this.bearingLines.push({
+                        x1: detectors[0].x,
+                        y1: detectors[0].y,
+                        x2: emitter.x, 
+                        y2: emitter.y,
+                        perceiver: listenerTeam
+                    });
+                } else if (detectors.length >= 2) {
+                    this.generateSignal(emitter, listenerTeam);
+                }
+            }
+        });
+    },
+
+    generateSignal(sourceUnit, perceivingTeam) {
+        // Deterministic noise based on location & turn
+        const seed = (sourceUnit.x * 100) + sourceUnit.y + this.turn;
+        // Increase noise range to +/- 2 tiles (Fuzzier)
+        const noiseX = (seed % 5) - 2; 
+        const noiseY = ((seed * 7) % 5) - 2;
+
+        this.detectedSignals.push({
+            x: Math.max(0, Math.min(MAP_WIDTH-1, sourceUnit.x + noiseX)),
+            y: Math.max(0, Math.min(MAP_HEIGHT-1, sourceUnit.y + noiseY)),
+            team: sourceUnit.team,
+            perceiver: perceivingTeam
+        });
+    },
+
+    revealArea(cx, cy, radius) {
+        const rSq = radius * radius;
+        for(let x = Math.max(0, cx - radius); x <= Math.min(MAP_WIDTH-1, cx + radius); x++) {
+            for(let y = Math.max(0, cy - radius); y <= Math.min(MAP_HEIGHT-1, cy + radius); y++) {
+                if((x-cx)**2 + (y-cy)**2 <= rSq) {
+                    this.grid[x][y].visible = true;
+                    this.grid[x][y].explored = true;
+                }
+            }
+        }
+    },
+
+    dist(u1, u2) { return Math.sqrt((u1.x - u2.x)**2 + (u1.y - u2.y)**2); },
+
+    endTurn() {
+        if(!this.isPlayerTurn) return;
+        this.selectedUnit = null;
+        this.actionState = null;
+        this.isPlayerTurn = false;
+        document.getElementById('turn-indicator').innerText = "ENEMY TURN";
+        document.getElementById('turn-indicator').className = "turn-enemy";
+        this.updateUI();
+        this.log("Turn ended. Analyzing ESM bearings...", "sys");
+        setTimeout(() => this.aiTurn(), 1000);
+    },
+
+    aiTurn() {
+        const aiUnits = this.units.filter(u => u.team === 1 && u.hp > 0);
+        const playerUnits = this.units.filter(u => u.team === 0 && u.hp > 0);
+        const signals = this.detectedSignals.filter(s => s.perceiver === 1);
+        const bearings = this.bearingLines.filter(b => b.perceiver === 1);
+
+        aiUnits.forEach(unit => {
+            unit.movesLeft = unit.maxMoves;
+            unit.hasFired = false;
+            
+            if(unit.type !== 'Submarine') unit.sensors.radar = true;
+            else { unit.sensors.radar = false; unit.sensors.sonar = true; }
+
+            // 1. Hard Target
+            let hardTarget = null;
+            let minDist = 999;
+            playerUnits.forEach(p => {
+                if(p.aiHardLocked) {
+                    const d = this.dist(unit, p);
+                    if(d < minDist) { minDist = d; hardTarget = p; }
+                }
+            });
+
+            if(hardTarget) {
+                const weapon = unit.weapons.find(w => w.ammo > 0 && w.range >= minDist && w.canTarget(hardTarget));
+                if(weapon && !unit.hasFired) {
+                    this.combat(unit, hardTarget, weapon);
+                } else {
+                    this.moveUnitTowards(unit, hardTarget.x, hardTarget.y);
+                }
+            } else {
+                // 2. Signals
+                let sig = signals.reduce((closest, s) => {
+                    const d = Math.sqrt((unit.x-s.x)**2 + (unit.y-s.y)**2);
+                    return d < closest.d ? {s, d} : closest;
+                }, {s:null, d:999}).s;
+
+                if(sig) {
+                    this.moveUnitTowards(unit, sig.x, sig.y);
+                } else {
+                    // 3. Bearings
+                    let bearing = bearings.reduce((closest, b) => {
+                        const d = Math.sqrt((unit.x-b.x1)**2 + (unit.y-b.y1)**2);
+                        return d < closest.d ? {b, d} : closest;
+                    }, {b:null, d:999}).b;
+
+                    if(bearing) {
+                        this.moveUnitTowards(unit, bearing.x2, bearing.y2); 
+                    } else {
+                        // Patrol
+                        this.moveUnitTowards(unit, unit.x - 3, unit.y + (Math.random()*4 - 2));
+                    }
+                }
+            }
+        });
+
+        this.isPlayerTurn = true;
+        this.turn++;
+        this.units.filter(u => u.team === 0).forEach(u => {
+            u.movesLeft = u.maxMoves;
+            u.hasFired = false;
+        });
+
+        this.updateVisibility();
+        document.getElementById('turn-indicator').innerText = "PLAYER TURN";
+        document.getElementById('turn-indicator').className = "turn-player";
+        this.log(`Turn ${this.turn} started.`, "sys");
+        this.updateUI();
+    },
+
+    moveUnitTowards(unit, tx, ty) {
+        let moves = unit.movesLeft;
+        if(unit.depth === 2) moves = Math.ceil(moves / 2);
+        const dx = tx - unit.x;
+        const dy = ty - unit.y;
+        const dist = Math.sqrt(dx*dx + dy*dy);
+        if(dist === 0) return;
+        
+        let mx = Math.round((dx/dist) * moves);
+        let my = Math.round((dy/dist) * moves);
+        unit.x = Math.max(0, Math.min(MAP_WIDTH-1, unit.x + mx));
+        unit.y = Math.max(0, Math.min(MAP_HEIGHT-1, unit.y + my));
+        unit.movesLeft = 0;
+    },
+
+    // --- INTERACTION ---
+    bindEvents() {
+        this.canvas.addEventListener('wheel', (e) => {
+            e.preventDefault();
+            const rect = this.canvas.getBoundingClientRect();
+            const direction = e.deltaY > 0 ? -1 : 1;
+            let newSize = this.tileSize + (direction * 4);
+            newSize = Math.max(this.minTileSize, Math.min(this.maxTileSize, newSize));
+            
+            const mx = e.clientX - rect.left;
+            const my = e.clientY - rect.top;
+            const gx = (mx - this.offsetX) / this.tileSize;
+            const gy = (my - this.offsetY) / this.tileSize;
+            
+            this.offsetX = mx - gx * newSize;
+            this.offsetY = my - gy * newSize;
+            this.tileSize = newSize;
+        });
+
+        this.canvas.addEventListener('mousedown', (e) => {
+            if(e.button === 2) {
+                this.isDragging = true;
+                this.lastMouseX = e.clientX;
+                this.lastMouseY = e.clientY;
+                return;
+            }
+            if(!this.isPlayerTurn) return;
+
+            const rect = this.canvas.getBoundingClientRect();
+            const gx = Math.floor((e.clientX - rect.left - this.offsetX) / this.tileSize);
+            const gy = Math.floor((e.clientY - rect.top - this.offsetY) / this.tileSize);
+
+            if(this.actionState === 'moving') this.handleMoveClick(gx, gy);
+            else if(this.actionState === 'targeting') this.handleAttackClick(gx, gy);
+            else this.handleSelectClick(gx, gy);
+        });
+
+        this.canvas.addEventListener('mousemove', (e) => {
+            if(this.isDragging) {
+                this.offsetX += e.clientX - this.lastMouseX;
+                this.offsetY += e.clientY - this.lastMouseY;
+                this.lastMouseX = e.clientX;
+                this.lastMouseY = e.clientY;
+                return;
+            }
+            const rect = this.canvas.getBoundingClientRect();
+            const gx = Math.floor((e.clientX - rect.left - this.offsetX) / this.tileSize);
+            const gy = Math.floor((e.clientY - rect.top - this.offsetY) / this.tileSize);
+            document.getElementById('hover-info').innerText = `GRID: ${gx},${gy}`;
+        });
+
+        this.canvas.addEventListener('mouseup', () => this.isDragging = false);
+        this.canvas.addEventListener('mouseleave', () => this.isDragging = false);
+        this.canvas.addEventListener('contextmenu', e => e.preventDefault());
+
+        document.getElementById('btn-move').onclick = () => {
+            if(this.selectedUnit && this.selectedUnit.movesLeft > 0) {
+                this.actionState = 'moving';
+                this.log("Select destination.", "info");
+            }
+        };
+        document.getElementById('btn-radar').onclick = () => this.toggleSensor('radar');
+        document.getElementById('btn-sonar').onclick = () => this.toggleSensor('sonar');
+        document.getElementById('btn-depth-up').onclick = () => this.changeDepth(-1);
+        document.getElementById('btn-depth-down').onclick = () => this.changeDepth(1);
+        document.getElementById('btn-end-turn').onclick = () => this.endTurn();
+    },
+
+    toggleSensor(type) {
+        if(!this.selectedUnit) return;
+        this.selectedUnit.sensors[type] = !this.selectedUnit.sensors[type];
+        this.updateVisibility();
+        this.updateUI();
+        this.log(`${this.selectedUnit.name} ${type} toggled.`, "info");
+    },
+    
+    changeDepth(delta) {
+        const u = this.selectedUnit;
+        if(!u || u.type !== 'Submarine') return;
+        const d = u.depth + delta;
+        if(d >= 0 && d <= 2) {
+            u.depth = d;
+            this.updateVisibility();
+            this.updateUI();
+            this.log(`${u.name} changing depth to ${this.getDepthName(d)}`, "info");
+        }
+    },
+
+    handleSelectClick(gx, gy) {
+        const unit = this.units.find(u => u.x === gx && u.y === gy && u.hp > 0);
+        if(unit && (unit.team === 0 || unit.isDetected)) {
+            this.selectedUnit = unit;
+            this.actionState = null;
+            this.updateUI();
+        } else {
+            this.selectedUnit = null;
+            this.updateUI();
+        }
+    },
+
+    handleMoveClick(gx, gy) {
+        const u = this.selectedUnit;
+        if(!u) return;
+        const dist = Math.sqrt((gx - u.x)**2 + (gy - u.y)**2);
+        if(dist <= u.movesLeft) {
+            u.x = gx;
+            u.y = gy;
+            u.movesLeft = 0;
+            this.actionState = null;
+            this.updateVisibility();
+            this.updateUI();
+            this.log(`${u.name} ordered to ${gx},${gy}.`, "info");
+        } else {
+            this.log("Out of range.", "sys");
+        }
+    },
+
+    prepareAttack(weaponIndex) {
+        const u = this.selectedUnit;
+        if(!u || u.hasFired) return;
+        
+        const w = u.weapons[weaponIndex];
+        // Allow Torpedoes at Deep depth (2) now
+        if(u.type === 'Submarine' && u.depth === 2 && w.type !== 'Torpedo') { this.log("Cannot fire this weapon from Deep.", "sys"); return; }
+        if(w.ammo <= 0) return;
+        
+        this.selectedWeapon = w;
+        this.actionState = 'targeting';
+        this.log(`Targeting with ${w.name}...`, "combat");
+    },
+
+    handleAttackClick(gx, gy) {
+        const target = this.units.find(u => u.x === gx && u.y === gy && u.hp > 0);
+        if(target && target.team !== this.selectedUnit.team) {
+            if(!target.isDetected) { this.log("Target not confirmed!", "sys"); return; }
+            const dist = this.dist(this.selectedUnit, target);
+            
+            // Calc Effective Range
+            let range = this.selectedWeapon.range;
+            if(this.selectedUnit.type === 'Submarine' && this.selectedUnit.depth === 2 && this.selectedWeapon.type === 'Torpedo') range -= 2;
+
+            if(dist <= range && this.selectedWeapon.canTarget(target)) {
+                this.combat(this.selectedUnit, target, this.selectedWeapon);
+                this.actionState = null;
+                this.selectedWeapon = null;
+                this.updateUI();
+            } else {
+                this.log("Invalid shot (Range/Type).", "sys");
+            }
+        }
+    },
+
+    combat(attacker, defender, weapon) {
+        // STRICT CHECK FOR AI
+        if(attacker.team === 1) {
+            // AI cannot fire at ghosts. Must have Hard Lock (isDetected & aiHardLocked)
+            if(!defender.aiHardLocked) {
+                console.warn("AI attempted to fire without Hard Lock - Blocked");
+                return;
+            }
+            this.log(`WARNING: ${attacker.name} has HARD LOCKED ${defender.name}!`, "combat");
+        }
+
+        attacker.hasFired = true;
+        weapon.ammo--;
+
+        const projectileColor = weapon.type === 'Torpedo' ? '#0ff' : (weapon.type === 'Gun' ? '#ff0' : '#fa0');
+        
+        let hit = false;
+        let intercepted = false;
+        let dmg = 0;
+        
+        let hitChance = 0.8;
+        if(defender.type === 'Submarine') {
+            if(defender.depth === 1) hitChance -= 0.3;
+            if(defender.depth === 2) hitChance -= 0.6;
+        }
+
+        if(weapon.type === 'Missile' || weapon.type === 'Air') {
+            const ciws = defender.weapons.find(w => w.name.includes('CIWS') || w.name.includes('Missile'));
+            if(ciws && Math.random() > 0.6) intercepted = true;
+        }
+
+        if(!intercepted && Math.random() < hitChance) {
+            hit = true;
+            dmg = weapon.damage;
+            defender.hp -= dmg;
+        }
+
+        // Launch Projectile (with callback)
+        this.spawnProjectile(attacker.visX, attacker.visY, defender.x, defender.y, projectileColor, weapon.type, (x, y) => {
+            // Callback: Impact
+            if(intercepted) {
+                this.log(`>> INTERCEPTED! ${defender.name} shot down incoming fire.`, "combat");
+                this.spawnExplosion(defender.x, defender.y, '#aaa');
+            } else if(hit) {
+                this.log(`>> HIT! ${defender.name} took ${dmg} damage.`, "combat");
+                if(defender.hp <= 0) {
+                    this.log(`*** ${defender.name} DESTROYED ***`, "combat");
+                    this.spawnExplosion(defender.x, defender.y, '#ff5500');
+                    this.spawnExplosion(defender.x, defender.y, '#ffff00'); 
+                } else {
+                    this.spawnExplosion(defender.x, defender.y, '#ff9900');
+                }
+            } else {
+                this.log(`>> MISS. Round fell short of ${defender.name}.`, "info");
+                this.spawnExplosion(defender.x + (Math.random()-0.5), defender.y + (Math.random()-0.5), '#fff');
+            }
+            
+            // Return Sortie if Air
+            if(weapon.type === 'Air') {
+                this.spawnProjectile(defender.x, defender.y, attacker.visX, attacker.visY, '#fff', 'Air', null);
+            }
+            
+            this.updateUI();
+        });
+    },
+
+    // --- UI ---
+    log(msg, type='info') {
+        const div = document.createElement('div');
+        div.className = `log-entry log-${type}`;
+        div.innerText = `[T${this.turn}] ${msg}`;
+        const container = document.getElementById('log-container');
+        container.appendChild(div);
+        container.scrollTop = container.scrollHeight;
+    },
+
+    updateUI() {
+        const panel = document.getElementById('unit-panel');
+        const noSel = document.getElementById('no-selection');
+
+        if(this.selectedUnit && (this.selectedUnit.team === 0 || this.selectedUnit.isDetected) && this.selectedUnit.hp > 0) {
+            panel.style.display = 'block';
+            noSel.style.display = 'none';
+
+            const u = this.selectedUnit;
+            document.getElementById('unit-name').innerText = `${u.name} (${u.type})`;
+            
+            let statusHTML = `
+                <div class="stat-row"><span>HP:</span> <span style="color:${u.hp < 40 ? 'red' : 'inherit'}">${u.hp}/${u.maxHp}</span></div>
+                <div class="stat-row"><span>Moves:</span> <span>${u.movesLeft}/${u.maxMoves}</span></div>
+                <div class="stat-row"><span>Depth:</span> <span>${this.getDepthName(u.depth)}</span></div>
+            `;
+            
+            if(u.team === 0) {
+                // If player unit, show if locked by enemy
+                if(u.aiHardLocked) {
+                    statusHTML += `<div class="stat-row" style="color:red; font-weight:bold; animation: blink 1s infinite;">WARNING: ENEMY LOCK</div>`;
+                }
+
+                statusHTML += `
+                <div class="stat-row"><span>Radar:</span> <span style="color:${u.sensors.radar ? 'red' : 'lime'}">${u.sensors.radar ? 'ACTIVE' : 'PASSIVE'}</span></div>
+                <div class="stat-row"><span>Sonar:</span> <span style="color:${u.sensors.sonar ? 'orange' : 'lime'}">${u.sensors.sonar ? 'ACTIVE' : 'PASSIVE'}</span></div>
+                `;
+                document.getElementById('btn-radar').innerText = `Radar: ${u.sensors.radar ? 'ON' : 'OFF'}`;
+                document.getElementById('btn-sonar').innerText = `Sonar: ${u.sensors.sonar ? 'ON' : 'OFF'}`;
+                document.getElementById('depth-controls').style.display = u.type === 'Submarine' ? 'flex' : 'none';
+
+                const wContainer = document.getElementById('weapon-controls');
+                wContainer.innerHTML = '';
+                u.weapons.forEach((w, idx) => {
+                    const btn = document.createElement('button');
+                    btn.className = 'btn btn-action';
+                    btn.innerText = `${w.name} [${w.ammo}]`;
+                    
+                    // Logic for disabled button
+                    let disabled = u.hasFired || w.ammo <= 0;
+                    if(u.type === 'Submarine' && u.depth === 2 && w.type !== 'Torpedo') disabled = true;
+                    
+                    btn.disabled = disabled;
+                    btn.onclick = () => this.prepareAttack(idx);
+                    wContainer.appendChild(btn);
+                });
+            } else {
+                 statusHTML += `<div class="stat-row" style="color:red">HOSTILE CONTACT</div>`;
+                 document.getElementById('unit-controls').style.display = 'none';
+                 document.getElementById('weapon-controls').innerHTML = '';
+            }
+            document.getElementById('unit-stats').innerHTML = statusHTML;
+        } else {
+            panel.style.display = 'none';
+            noSel.style.display = 'block';
+        }
+    },
+
+    getDepthName(d) {
+        return d === 0 ? "Surface" : (d === 1 ? "Periscope" : "Deep");
+    }
+};
+
+class Unit {
+    constructor(team, name, type, x, y) {
+        this.team = team;
+        this.name = name;
+        this.type = type;
+        this.x = x;
+        this.y = y;
+        
+        this.visX = x;
+        this.visY = y;
+        this.visHp = 100;
+
+        this.hp = 100;
+        this.maxHp = 100;
+        this.movesLeft = 0;
+        this.maxMoves = 0;
+        this.depth = 0;
+        this.isDetected = false;
+        this.aiHardLocked = false;
+        this.sensors = { radar: false, sonar: false };
+        this.weapons = [];
+        
+        this.configureType();
+        this.visHp = this.hp;
+        this.movesLeft = this.maxMoves;
+    }
+
+    configureType() {
+        if(this.type === 'Carrier') {
+            this.maxHp = 200; this.hp = 200; this.maxMoves = 3;
+            this.weapons = [
+                new Weapon('F-35 Wing', 'Air', 25, 40, 5),
+                new Weapon('ASW Helo', 'ASW', 15, 30, 8),
+                new Weapon('CIWS', 'Defense', 1, 0, 99)
+            ];
+        } else if (this.type === 'Submarine') {
+            this.maxHp = 80; this.hp = 80; this.maxMoves = 5; this.depth = 1;
+            this.weapons = [
+                new Weapon('Hv Torpedo', 'Torpedo', 4, 80, 6),
+                new Weapon('Cruise Msl', 'Missile', 12, 40, 4)
+            ];
+        } else if (this.type === 'Destroyer') {
+            this.maxHp = 120; this.hp = 120; this.maxMoves = 6;
+            this.weapons = [
+                new Weapon('Tomahawk', 'Missile', 15, 35, 12),
+                new Weapon('5-in Gun', 'Gun', 3, 15, 99),
+                new Weapon('Torpedo', 'Torpedo', 4, 50, 4),
+                new Weapon('RAM/CIWS', 'Defense', 2, 10, 99)
+            ];
+        }
+    }
+
+    draw(ctx, ox, oy, ts) {
+        const cx = this.visX * ts + ts/2 + ox;
+        const cy = this.visY * ts + ts/2 + oy;
+        
+        ctx.strokeStyle = this.team === 0 ? COLORS.friendly : COLORS.hostile;
+        ctx.fillStyle = this.team === 0 ? 'rgba(88, 166, 255, 0.2)' : 'rgba(255, 51, 51, 0.2)';
+        
+        if(this.team === 0 && Game.selectedUnit === this) ctx.strokeStyle = COLORS.selection;
+
+        ctx.lineWidth = 2;
+        ctx.beginPath();
+        if(this.type === 'Submarine') {
+            ctx.ellipse(cx, cy, ts/3, ts/4, 0, 0, 2 * Math.PI);
+        } else {
+            const s = ts * 0.7;
+            ctx.rect(cx - s/2, cy - s/2, s, s);
+            ctx.moveTo(cx - s/2, cy - s/2);
+            if(this.type === 'Carrier') ctx.lineTo(cx + s/2, cy + s/2);
+            else ctx.lineTo(cx + s/2, cy + s/2); 
+            if(this.type === 'Destroyer') { ctx.moveTo(cx + s/2, cy - s/2); ctx.lineTo(cx - s/2, cy + s/2); }
+        }
+        ctx.fill();
+        ctx.stroke();
+
+        const barW = ts * 0.8;
+        ctx.fillStyle = '#330000';
+        ctx.fillRect(cx - barW/2, cy - ts/2 - 6, barW, 4);
+        ctx.fillStyle = this.hp < this.maxHp*0.3 ? '#f00' : '#0f0';
+        const pct = Math.max(0, this.visHp / this.maxHp);
+        ctx.fillRect(cx - barW/2, cy - ts/2 - 6, barW * pct, 4);
+
+        if(this.team === 0 && this.sensors.radar) {
+            ctx.font = `${Math.max(10, ts/4)}px monospace`;
+            ctx.fillStyle = '#f55';
+            ctx.fillText('RAD', cx + ts/3, cy - ts/3);
+        }
+
+        // Draw LOCKED Text if user is Hard Locked
+        if(this.team === 0 && this.aiHardLocked) {
+             ctx.font = `bold ${Math.max(10, ts/4)}px monospace`;
+             ctx.fillStyle = '#ff0000';
+             ctx.textAlign = 'center';
+             ctx.fillText('LOCKED!', cx, cy - ts);
+        }
+    }
+}
+
+class Weapon {
+    constructor(name, type, range, damage, ammo) {
+        this.name = name; this.type = type; this.range = range; this.damage = damage; this.ammo = ammo;
+    }
+    canTarget(t) {
+        if(this.type === 'Torpedo') return t.depth < 2; 
+        if(this.type === 'Missile' || this.type === 'Gun' || this.type === 'Air') return t.depth === 0;
+        if(this.type === 'ASW') return t.type === 'Submarine';
+        return false;
+    }
+}
+
+window.onload = () => Game.init();
+</script>
+</body>
+</html>
