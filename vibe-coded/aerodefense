@@ -1,0 +1,1209 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>AeroDefense Command</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <style>
+        body { margin: 0; overflow: hidden; background-color: #0f172a; user-select: none; }
+        #gameCanvas { display: block; width: 100%; height: 100%; }
+        .custom-scrollbar::-webkit-scrollbar { width: 6px; }
+        .custom-scrollbar::-webkit-scrollbar-track { background: rgba(30, 41, 59, 0.5); }
+        .custom-scrollbar::-webkit-scrollbar-thumb { background: #475569; border-radius: 4px; }
+        .custom-scrollbar::-webkit-scrollbar-thumb:hover { background: #64748b; }
+        
+        /* Scanline effect */
+        .scanlines {
+            background: linear-gradient(to bottom, rgba(255,255,255,0), rgba(255,255,255,0) 50%, rgba(0,0,0,0.1) 50%, rgba(0,0,0,0.1));
+            background-size: 100% 4px;
+            pointer-events: none;
+        }
+    </style>
+</head>
+<body class="text-slate-200 font-sans h-screen w-screen flex">
+
+    <!-- Game Canvas -->
+    <div class="relative flex-1 h-full w-full">
+        <canvas id="gameCanvas"></canvas>
+        <div class="absolute inset-0 scanlines z-0"></div>
+        
+        <!-- Top HUD -->
+        <div class="absolute top-0 left-0 w-full p-4 flex justify-between items-start pointer-events-none z-10">
+            <div class="bg-slate-900/80 backdrop-blur-md border border-slate-700 p-4 rounded-xl shadow-2xl flex gap-6">
+                <div>
+                    <div class="text-slate-400 text-xs uppercase tracking-wider font-bold">Funds</div>
+                    <div class="text-emerald-400 text-2xl font-mono font-bold">$<span id="ui-money">2500</span></div>
+                </div>
+                <div>
+                    <div class="text-slate-400 text-xs uppercase tracking-wider font-bold">Integrity</div>
+                    <div class="text-rose-400 text-2xl font-mono font-bold"><span id="ui-lives">20</span></div>
+                </div>
+                <div>
+                    <div class="text-slate-400 text-xs uppercase tracking-wider font-bold">Wave</div>
+                    <div class="text-cyan-400 text-2xl font-mono font-bold"><span id="ui-wave">1</span></div>
+                </div>
+            </div>
+            
+            <button id="btn-next-wave" class="pointer-events-auto bg-cyan-600 hover:bg-cyan-500 text-white font-bold py-3 px-6 rounded-xl shadow-[0_0_15px_rgba(8,145,178,0.5)] transition-all border border-cyan-400">
+                START WAVE
+            </button>
+        </div>
+    </div>
+
+    <!-- Right Control Panel -->
+    <div class="w-80 h-full bg-slate-900 border-l border-slate-700 flex flex-col z-20 shadow-[-10px_0_30px_rgba(0,0,0,0.5)] relative">
+        <div class="p-5 border-b border-slate-700 bg-slate-800 flex justify-between items-center">
+            <h1 class="text-xl font-bold text-white tracking-wide">COMMAND</h1>
+            <div class="w-3 h-3 rounded-full bg-emerald-500 shadow-[0_0_8px_#10b981] animate-pulse"></div>
+        </div>
+
+        <div id="panel-content" class="flex-1 overflow-y-auto custom-scrollbar p-4 flex flex-col gap-4">
+            <!-- Dynamic Content Injected Here -->
+        </div>
+    </div>
+
+<script>
+/**
+ * ENGINE & STATE
+ */
+const canvas = document.getElementById('gameCanvas');
+const ctx = canvas.getContext('2d', { alpha: false });
+let width, height;
+
+const UI = {
+    money: document.getElementById('ui-money'),
+    lives: document.getElementById('ui-lives'),
+    wave: document.getElementById('ui-wave'),
+    panel: document.getElementById('panel-content'),
+    btnNextWave: document.getElementById('btn-next-wave')
+};
+
+const GAME = {
+    money: 2000,
+    lives: 20,
+    wave: 0,
+    state: 'BUILD', 
+    bases: [],
+    enemies: [],
+    projectiles: [],
+    particles: [],
+    units: [],
+    path: [],
+    selectedBase: null,
+    placingBaseType: null,
+    enemySpawnTimer: 0,
+    enemiesToSpawn: 0,
+    waveActive: false
+};
+
+function resize() {
+    width = canvas.parentElement.clientWidth;
+    height = canvas.parentElement.clientHeight;
+    canvas.width = width;
+    canvas.height = height;
+    generatePath();
+}
+window.addEventListener('resize', resize);
+
+/**
+ * DATA DEFINITIONS
+ */
+const WEAPONS = {
+    GUN_30MM:  { name: '30mm Cannon', type: 'bullet', dmg: 2, speed: 15, spread: 0.15, fireRate: 5, aoe: 0, color: '#fef08a' },
+    GUN_SMALL: { name: 'Small Arms', type: 'bullet', dmg: 1, speed: 12, spread: 0.2, fireRate: 4, aoe: 0, color: '#fde047' },
+    GUN_HEAVY: { name: 'Heavy Cannon', type: 'bullet', dmg: 3, speed: 18, spread: 0.1, fireRate: 3, aoe: 0, color: '#facc15' },
+    GRENADE:   { name: 'Grenade', type: 'explosive', dmg: 15, speed: 8, spread: 0.3, fireRate: 30, aoe: 40, color: '#f97316' },
+    ROCKET:    { name: 'Rocket Pod', type: 'explosive', dmg: 25, speed: 10, spread: 0.25, fireRate: 15, aoe: 50, color: '#ea580c' },
+    BOMB:      { name: 'Unguided Bomb', type: 'explosive', dmg: 80, speed: 5, spread: 0.4, fireRate: 45, aoe: 100, color: '#dc2626' },
+    GBOMB:     { name: 'Guided Bomb', type: 'guided', dmg: 60, speed: 6, spread: 0.05, fireRate: 60, aoe: 80, color: '#fbbf24', turnRate: 0.05 },
+    MISSILE:   { name: 'Guided Missile', type: 'guided', dmg: 40, speed: 12, spread: 0.0, fireRate: 40, aoe: 30, color: '#38bdf8', turnRate: 0.15 },
+};
+
+const UNIT_TYPES = {
+    'AH-64': { name: 'AH-64 Attack', cat: 'heli', cost: 150, speed: 2.5, agility: 0.05, behavior: 'strafe', 
+        weapons: [{type: 'ROCKET', max: 12}, {type: 'GUN_30MM', max: 300}], arc: { front: 0, spread: Math.PI/4 } },
+    'MH-53': { name: 'MH-53 SpecOps', cat: 'heli', cost: 200, speed: 1.8, agility: 0.08, behavior: 'loiter', 
+        weapons: [{type: 'GRENADE', max: 40}, {type: 'GUN_SMALL', max: 400}], arc: { front: -Math.PI/2, spread: Math.PI/4 } },
+    'TRANSPORT': { name: 'Transport', cat: 'heli', cost: 100, speed: 2.0, agility: 0.04, behavior: 'logistics', 
+        weapons: [{type: 'GUN_SMALL', max: 200}], arc: { front: Math.PI/2, spread: Math.PI/4, dual: true } },
+    
+    'F-16': { name: 'F-16 Fighter', cat: 'light', cost: 250, speed: 5.0, agility: 0.1, behavior: 'strafe', 
+        weapons: [{type: 'GUN_HEAVY', max: 200}], arc: { front: 0, spread: 5 * Math.PI / 180 } },
+    'T-55': { name: 'T-55 Strike', cat: 'light', cost: 220, speed: 3.5, agility: 0.06, behavior: 'strafe', 
+        weapons: [{type: 'BOMB', max: 4}, {type: 'ROCKET', max: 16}, {type: 'GUN_30MM', max: 150}], arc: { front: 0, spread: 5 * Math.PI / 180 } },
+    'CRICKET': { name: 'Cricket COIN', cat: 'light', cost: 280, speed: 2.2, agility: 0.05, behavior: 'strafe', 
+        weapons: [{type: 'MISSILE', max: 8}, {type: 'ROCKET', max: 24}, {type: 'GUN_SMALL', max: 500}], arc: { front: 0, spread: 5 * Math.PI / 180 } },
+    
+    'F/A-18': { name: 'F/A-18 Strike', cat: 'med', cost: 400, speed: 4.5, agility: 0.08, behavior: 'strafe', 
+        weapons: [{type: 'GBOMB', max: 4}, {type: 'MISSILE', max: 6}, {type: 'GUN_30MM', max: 150}], arc: { front: 0, spread: 5 * Math.PI / 180 } },
+    'A-10': { name: 'A-10 Attack', cat: 'med', cost: 450, speed: 2.5, agility: 0.06, behavior: 'strafe', 
+        weapons: [{type: 'MISSILE', max: 12}, {type: 'GUN_HEAVY', max: 600}], arc: { front: 0, spread: 5 * Math.PI / 180 } },
+    'F-14': { name: 'F-14 Interceptor', cat: 'med', cost: 350, speed: 6.0, agility: 0.04, behavior: 'standoff', 
+        weapons: [{type: 'MISSILE', max: 4}], arc: { front: 0, spread: 5 * Math.PI / 180 } },
+        
+    'B-52': { name: 'B-52 Bomber', cat: 'large', cost: 800, speed: 2.0, agility: 0.02, behavior: 'wide_strafe', 
+        weapons: [{type: 'BOMB', max: 40}] },
+    'MQ-9': { name: 'MQ-9 Drone', cat: 'large', cost: 600, speed: 2.2, agility: 0.06, behavior: 'loiter', 
+        weapons: [{type: 'MISSILE', max: 8}] },
+};
+
+const BASE_TYPES = {
+    'HELIPAD': { name: 'Helipad', cost: 300, color: '#10b981', size: 30, slots: ['heli'] },
+    'HIGHWAY': { name: 'Highway Airstrip', cost: 500, color: '#64748b', size: 40, slots: ['light', 'light'] },
+    'CIVILIAN': { name: 'Civilian Airport', cost: 900, color: '#3b82f6', size: 50, slots: ['light|med', 'light|med', 'light|med'] },
+    'STRATEGIC': { name: 'Strategic Airbase', cost: 2000, color: '#8b5cf6', size: 60, slots: ['large', 'large', 'light|med', 'light|med', 'heli'] },
+    'LOGISTICS': { name: 'Logistics Hub', cost: 400, color: '#f59e0b', size: 35, slots: [], desc: 'Generates passive income. Transports fly between hubs for bonus.' }
+};
+
+/**
+ * MATH & UTILS
+ */
+function dist(a, b) { return Math.hypot(b.x - a.x, b.y - a.y); }
+function angleWrap(a) {
+    while (a > Math.PI) a -= Math.PI * 2;
+    while (a < -Math.PI) a += Math.PI * 2;
+    return a;
+}
+function approachAngle(current, target, rate) {
+    let diff = angleWrap(target - current);
+    if (Math.abs(diff) < rate) return target;
+    return current + Math.sign(diff) * rate;
+}
+
+/**
+ * MAP GENERATION - Custom predefined winding path
+ */
+function generatePath() {
+    GAME.path = [];
+    GAME.path.push({x: -50, y: height * 0.15});                         
+    GAME.path.push({x: width * 0.15, y: height * 0.15});                
+    GAME.path.push({x: width * 0.15, y: height * 0.85});                
+    GAME.path.push({x: width * 0.22, y: height * 0.93});                
+    GAME.path.push({x: width * 0.38, y: height * 0.93});                
+    GAME.path.push({x: width * 0.45, y: height * 0.85});                
+    GAME.path.push({x: width * 0.45, y: height * 0.45});                
+    GAME.path.push({x: width * 0.25, y: height * 0.45});                
+    GAME.path.push({x: width * 0.25, y: height * 0.25});                
+    GAME.path.push({x: width * 0.85, y: height * 0.25});                
+    GAME.path.push({x: width * 0.85, y: height + 50});                  
+}
+
+/**
+ * CLASSES
+ */
+class Base {
+    constructor(x, y, typeId) {
+        this.x = x;
+        this.y = y;
+        this.typeId = typeId;
+        this.def = BASE_TYPES[typeId];
+        this.slots = this.def.slots.map(req => ({ req, unit: null }));
+        this.incomeTimer = 0;
+    }
+
+    update() {
+        if (this.typeId === 'LOGISTICS') {
+            this.incomeTimer++;
+            if (this.incomeTimer > 300) { 
+                addMoney(15);
+                createFloatingText(this.x, this.y, '+$15', '#fcd34d');
+                this.incomeTimer = 0;
+            }
+        }
+    }
+
+    draw() {
+        ctx.save();
+        ctx.translate(this.x, this.y);
+        
+        ctx.shadowColor = this.def.color;
+        ctx.shadowBlur = 10;
+        ctx.fillStyle = '#1e293b';
+        ctx.strokeStyle = this.def.color;
+        ctx.lineWidth = 3;
+        
+        ctx.beginPath();
+        if (this.typeId === 'HELIPAD') ctx.arc(0, 0, this.def.size/2, 0, Math.PI*2);
+        else ctx.rect(-this.def.size/2, -this.def.size/2, this.def.size, this.def.size);
+        ctx.fill();
+        ctx.stroke();
+
+        ctx.shadowBlur = 0;
+        ctx.fillStyle = this.def.color;
+        ctx.font = 'bold 14px monospace';
+        ctx.textAlign = 'center';
+        ctx.textBaseline = 'middle';
+        ctx.fillText(this.typeId.charAt(0), 0, 0);
+        
+        let parkedCount = this.slots.filter(s => s.unit && s.unit.state === 'REARMING').length;
+        if (parkedCount > 0) {
+            ctx.fillStyle = '#10b981';
+            ctx.beginPath();
+            ctx.arc(this.def.size/2, -this.def.size/2, 5, 0, Math.PI*2);
+            ctx.fill();
+        }
+
+        ctx.restore();
+    }
+}
+
+class Unit {
+    constructor(base, slotIndex, typeId) {
+        this.base = base;
+        this.slotIndex = slotIndex;
+        this.typeId = typeId;
+        this.def = UNIT_TYPES[typeId];
+        
+        this.x = base.x;
+        this.y = base.y;
+        this.angle = 0;
+        this.state = 'REARMING'; 
+        
+        this.weapons = JSON.parse(JSON.stringify(this.def.weapons));
+        this.weapons.forEach(w => {
+            w.ammo = 0; 
+            w.cooldown = 0;
+        });
+        
+        this.rearmTimer = 0;
+        this.target = null;
+        this.attackPhase = 0;
+        this.flightPath = null; 
+        this.loiterCenter = null;
+    }
+
+    hasAmmo() {
+        return this.weapons.some(w => w.ammo > 0);
+    }
+
+    update() {
+        this.weapons.forEach(w => { if(w.cooldown > 0) w.cooldown--; });
+
+        switch(this.state) {
+            case 'REARMING':
+                this.x = this.base.x;
+                this.y = this.base.y;
+                this.loiterCenter = null;
+                this.rearmTimer++;
+                if (this.rearmTimer > 180) {
+                    this.weapons.forEach(w => w.ammo = w.max);
+                    this.state = 'IDLE';
+                    this.rearmTimer = 0;
+                }
+                break;
+                
+            case 'IDLE':
+                this.x = this.base.x;
+                this.y = this.base.y;
+                this.loiterCenter = null;
+                
+                if (this.def.behavior === 'logistics') {
+                    let otherHubs = GAME.bases.filter(b => b.typeId === 'LOGISTICS' && b !== this.base);
+                    if (otherHubs.length > 0) {
+                        this.target = otherHubs[Math.floor(Math.random() * otherHubs.length)];
+                        this.state = 'LOGISTICS';
+                        this.attackPhase = 0; 
+                    }
+                } else if (GAME.enemies.length > 0) {
+                    this.target = this.findBestTarget();
+                    if (this.target) {
+                        this.state = 'FLYING_OUT';
+                        this.setupAttackRun();
+                    }
+                }
+                break;
+
+            case 'LOGISTICS':
+                if (this.attackPhase === 0) {
+                    this.flyTowards(this.target.x, this.target.y);
+                    if (dist(this, this.target) < 10) {
+                        this.attackPhase = 1;
+                        this.rearmTimer = 0;
+                    }
+                } else if (this.attackPhase === 1) {
+                    this.rearmTimer++;
+                    if (this.rearmTimer > 120) {
+                        addMoney(50);
+                        createFloatingText(this.target.x, this.target.y, 'CARGO +$50', '#6ee7b7');
+                        this.target = this.base;
+                        this.attackPhase = 0;
+                    }
+                }
+                this.fireAtOpportunity();
+                break;
+
+            case 'FLYING_OUT':
+                if (!this.target || this.target.hp <= 0) {
+                    this.target = this.findBestTarget();
+                    if (!this.target) { this.state = 'FLY_HOME'; break; }
+                    this.setupAttackRun();
+                }
+                
+                if (this.def.behavior === 'standoff') {
+                    this.flyTowards(this.target.x, this.target.y);
+                    if (dist(this, this.target) < 400) this.state = 'ATTACKING';
+                } else {
+                    this.flyTowards(this.flightPath.startX, this.flightPath.startY);
+                    if (dist(this, {x: this.flightPath.startX, y: this.flightPath.startY}) < 50) {
+                        this.state = 'ATTACKING';
+                    }
+                }
+                break;
+
+            case 'ATTACKING':
+                if (!this.hasAmmo()) {
+                    this.state = 'FLY_HOME';
+                    break;
+                }
+
+                if (this.def.behavior === 'strafe' || this.def.behavior === 'wide_strafe') {
+                    this.flyTowards(this.flightPath.endX, this.flightPath.endY);
+                    
+                    let bestTarget = null;
+                    let bestAngleDiff = Infinity;
+                    let arcLimit = this.def.arc ? this.def.arc.spread : (Math.PI / 6);
+
+                    for (let e of GAME.enemies) {
+                        if (dist(this, e) < 350) {
+                            let angleToE = angleWrap(Math.atan2(e.y - this.y, e.x - this.x));
+                            let diff = Math.abs(angleWrap(angleToE - this.angle));
+                            if (diff <= arcLimit && diff < bestAngleDiff) {
+                                bestAngleDiff = diff;
+                                bestTarget = e;
+                            }
+                        }
+                    }
+                    
+                    if (bestTarget) {
+                        let prevTarget = this.target; 
+                        this.target = bestTarget;
+                        this.fireWeapons();
+                        this.target = prevTarget;
+                    }
+
+                    if (dist(this, {x: this.flightPath.endX, y: this.flightPath.endY}) < 50) {
+                        this.target = this.findBestTarget();
+                        if(this.target) this.setupAttackRun();
+                        else this.state = 'FLY_HOME';
+                    }
+
+                } else if (this.def.behavior === 'loiter') {
+                    
+                    let hasEnemyInRange = false;
+                    if (this.loiterCenter) {
+                        for (let e of GAME.enemies) {
+                            if (dist(this.loiterCenter, e) < 250) {
+                                hasEnemyInRange = true;
+                                break;
+                            }
+                        }
+                    }
+                    
+                    if (!this.loiterCenter || !hasEnemyInRange) {
+                        this.target = this.findBestTarget();
+                        if (!this.target) { this.state = 'FLY_HOME'; break; }
+                        this.loiterCenter = {x: this.target.x, y: this.target.y};
+                    }
+
+                    if (this.loiterCenter) {
+                        let d = dist(this, this.loiterCenter);
+                        let angleToCenter = Math.atan2(this.loiterCenter.y - this.y, this.loiterCenter.x - this.x);
+                        
+                        let radiusError = d - 150;
+                        let correction = Math.max(-1, Math.min(1, radiusError / 100)) * (Math.PI / 3);
+                        // Bug Fix: Subtract correction to pull towards center instead of repelling
+                        let targetAngle = angleWrap(angleToCenter + Math.PI / 2 - correction);
+                        
+                        this.flyTowardsAngle(targetAngle);
+
+                        let t = this.findBestTarget();
+                        if (t && dist(this, t) < 300) {
+                            let prevTarget = this.target;
+                            this.target = t;
+                            this.fireWeapons();
+                            this.target = prevTarget;
+                        }
+                    }
+
+                } else if (this.def.behavior === 'standoff') {
+                    if (!this.target || this.target.hp <= 0) { this.state = 'FLY_HOME'; break; }
+                    
+                    if (this.fireWeapons()) {
+                        this.state = 'FLY_HOME';
+                    } else {
+                        // Fly toward target until within dangerously close range, then abort
+                        this.flyTowards(this.target.x, this.target.y);
+                        if (dist(this, this.target) < 150) {
+                            this.state = 'FLY_HOME'; 
+                        }
+                    }
+                }
+                break;
+
+            case 'FLY_HOME':
+                this.loiterCenter = null;
+                let dToBase = dist(this, this.base);
+                
+                // Slow down when approaching base to ensure tight turning loop
+                let speedMod = dToBase < 150 ? Math.max(0.3, dToBase / 150) : 1.0;
+                this.flyTowards(this.base.x, this.base.y, speedMod);
+                
+                // Slightly generous landing radius to prevent endless loop
+                if (dToBase < 30) {
+                    this.state = 'REARMING';
+                    this.rearmTimer = 0;
+                }
+                break;
+        }
+    }
+
+    flyTowardsAngle(targetAngle, forceSpeedMod = 1.0) {
+        let diff = Math.abs(angleWrap(targetAngle - this.angle));
+        
+        let speedMod = forceSpeedMod;
+        if (diff > Math.PI / 6) { 
+            let intensity = Math.min((diff - Math.PI/6) / (Math.PI/2), 1.0);
+            speedMod *= 1.0 - (0.4 * intensity);
+        }
+
+        this.angle = approachAngle(this.angle, targetAngle, this.def.agility);
+        this.x += Math.cos(this.angle) * this.def.speed * speedMod;
+        this.y += Math.sin(this.angle) * this.def.speed * speedMod;
+    }
+
+    flyTowards(tx, ty, forceSpeedMod = 1.0) {
+        let targetAngle = Math.atan2(ty - this.y, tx - this.x);
+        this.flyTowardsAngle(targetAngle, forceSpeedMod);
+    }
+
+    setupAttackRun() {
+        let distOff = this.def.behavior === 'wide_strafe' ? 400 : 250;
+        let strafeAngle;
+
+        if ((this.def.behavior === 'strafe' || this.def.behavior === 'wide_strafe') && this.target instanceof Enemy) {
+            strafeAngle = this.target.getHeading() + Math.PI; 
+        } else {
+            strafeAngle = Math.atan2(this.target.y - this.y, this.target.x - this.x);
+        }
+
+        let sx = this.target.x - Math.cos(strafeAngle) * distOff;
+        let sy = this.target.y - Math.sin(strafeAngle) * distOff;
+
+        let minTurnRadius = this.def.speed / this.def.agility;
+        let pToStartAngle = Math.atan2(sy - this.y, sx - this.x);
+        let angleDiff = Math.abs(angleWrap(pToStartAngle - this.angle));
+        let distToStart = dist(this, {x: sx, y: sy});
+
+        // Extend back-off vector if needed
+        if (distToStart < minTurnRadius * 2 || (angleDiff > Math.PI/2 && distToStart < minTurnRadius * 4)) {
+            distOff += minTurnRadius * 2.5; 
+        }
+
+        let calculatePoints = (angle, dOff) => {
+            return {
+                sx: this.target.x - Math.cos(angle) * dOff,
+                sy: this.target.y - Math.sin(angle) * dOff,
+                ex: this.target.x + Math.cos(angle) * dOff,
+                ey: this.target.y + Math.sin(angle) * dOff
+            };
+        };
+
+        let pts = calculatePoints(strafeAngle, distOff);
+        let isOffScreen = (x, y) => x < 50 || x > width - 50 || y < 50 || y > height - 50;
+
+        // Tweak: Prioritize on-screen paths
+        if (isOffScreen(pts.sx, pts.sy)) {
+            // Try inverting the attack run 180 degrees
+            let altPts = calculatePoints(strafeAngle + Math.PI, distOff);
+            
+            if (!isOffScreen(altPts.sx, altPts.sy)) {
+                pts = altPts;
+            } else {
+                // If both sides are bad, at least clamp the start point to the map edges
+                pts.sx = Math.max(50, Math.min(width - 50, pts.sx));
+                pts.sy = Math.max(50, Math.min(height - 50, pts.sy));
+            }
+        }
+
+        this.flightPath = {
+            startX: pts.sx,
+            startY: pts.sy,
+            endX: pts.ex,
+            endY: pts.ey
+        };
+    }
+
+    findBestTarget() {
+        if (GAME.enemies.length === 0) return null;
+
+        if (this.def.behavior === 'strafe' || this.def.behavior === 'wide_strafe') {
+            let best = null;
+            let maxProgress = -1;
+            for (let e of GAME.enemies) {
+                let targetWaypoint = GAME.path[e.pathIndex];
+                if (!targetWaypoint) continue;
+                let d = dist(e, targetWaypoint);
+                let progress = e.pathIndex * 1000 - d; 
+                if (progress > maxProgress) {
+                    maxProgress = progress;
+                    best = e;
+                }
+            }
+            return best;
+        } else {
+            let best = null;
+            let minDist = Infinity;
+            for (let e of GAME.enemies) {
+                let d = dist(this, e);
+                if (d < minDist) { minDist = d; best = e; }
+            }
+            return best;
+        }
+    }
+
+    checkFiringArc(targetX, targetY) {
+        let angleToTarg = angleWrap(Math.atan2(targetY - this.y, targetX - this.x));
+        let relativeAngle = angleWrap(angleToTarg - this.angle);
+
+        if (!this.def.arc) {
+            return Math.abs(relativeAngle) <= Math.PI / 6;
+        }
+        
+        let arcFront = this.def.arc.front;
+        let spread = this.def.arc.spread;
+        
+        if (this.def.arc.dual) {
+            let matchLeft = Math.abs(angleWrap(relativeAngle - arcFront)) <= spread;
+            let matchRight = Math.abs(angleWrap(relativeAngle + arcFront)) <= spread;
+            return matchLeft || matchRight;
+        } else {
+            return Math.abs(angleWrap(relativeAngle - arcFront)) <= spread;
+        }
+    }
+
+    fireAtOpportunity() {
+        if (!this.hasAmmo()) return;
+        let t = this.findBestTarget();
+        if (t && dist(this, t) < 200) {
+            let prevTarget = this.target; 
+            this.target = t;
+            this.fireWeapons();
+            this.target = prevTarget; 
+        }
+    }
+
+    fireWeapons() {
+        if (!this.target) return false;
+        
+        let fired = false;
+        for (let weaponStatus of this.weapons) {
+            if (weaponStatus.ammo <= 0) continue;
+            if (weaponStatus.cooldown > 0) continue;
+            
+            let wDef = WEAPONS[weaponStatus.type];
+            
+            if (!this.checkFiringArc(this.target.x, this.target.y)) {
+                continue;
+            }
+
+            weaponStatus.ammo--;
+            weaponStatus.cooldown = wDef.fireRate;
+            
+            let fireAngle = Math.atan2(this.target.y - this.y, this.target.x - this.x);
+            fireAngle += (Math.random() - 0.5) * wDef.spread;
+
+            GAME.projectiles.push(new Projectile(this.x, this.y, fireAngle, wDef, this.target));
+            fired = true;
+            break; 
+        }
+        return fired;
+    }
+
+    draw() {
+        if (this.state === 'REARMING') return; 
+        
+        ctx.save();
+        ctx.translate(this.x, this.y);
+        ctx.rotate(this.angle);
+
+        ctx.fillStyle = this.def.cat === 'heli' ? '#10b981' : '#38bdf8';
+        
+        if (this.def.cat === 'heli') {
+            ctx.beginPath();
+            ctx.ellipse(0, 0, 8, 4, 0, 0, Math.PI*2);
+            ctx.fill();
+            ctx.fillRect(-12, -1, 6, 2);
+            ctx.save();
+            ctx.rotate(Date.now() * 0.02);
+            ctx.strokeStyle = 'rgba(255,255,255,0.5)';
+            ctx.lineWidth = 1;
+            ctx.beginPath();
+            ctx.moveTo(-10, 0); ctx.lineTo(10, 0);
+            ctx.moveTo(0, -10); ctx.lineTo(0, 10);
+            ctx.stroke();
+            ctx.restore();
+        } else {
+            let size = this.def.cat === 'large' ? 12 : (this.def.cat === 'med' ? 9 : 6);
+            ctx.beginPath();
+            ctx.moveTo(size, 0);
+            ctx.lineTo(-size, -size*0.8);
+            ctx.lineTo(-size*0.6, 0);
+            ctx.lineTo(-size, size*0.8);
+            ctx.closePath();
+            ctx.fill();
+        }
+
+        ctx.restore();
+    }
+}
+
+class Projectile {
+    constructor(x, y, angle, def, target) {
+        this.x = x;
+        this.y = y;
+        this.angle = angle;
+        this.def = def;
+        this.target = target;
+        this.life = 0;
+        this.maxLife = def.type === 'bullet' ? 40 : 150;
+        this.vx = Math.cos(angle) * def.speed;
+        this.vy = Math.sin(angle) * def.speed;
+    }
+
+    update() {
+        this.life++;
+        
+        if (this.def.type === 'guided' && this.target && this.target.hp > 0) {
+            let targetAngle = Math.atan2(this.target.y - this.y, this.target.x - this.x);
+            this.angle = approachAngle(this.angle, targetAngle, this.def.turnRate);
+            this.vx = Math.cos(this.angle) * this.def.speed;
+            this.vy = Math.sin(this.angle) * this.def.speed;
+            if (this.life % 2 === 0) GAME.particles.push(new Particle(this.x, this.y, '#ffffff', 2, 10));
+        } else if (this.def.type === 'explosive') {
+            if (this.life % 3 === 0) GAME.particles.push(new Particle(this.x, this.y, '#9ca3af', 2, 15));
+        }
+
+        this.x += this.vx;
+        this.y += this.vy;
+
+        let hit = false;
+        for (let e of GAME.enemies) {
+            if (dist(this, e) < e.size + 5) {
+                hit = true;
+                if (this.def.aoe > 0) {
+                    this.explode();
+                } else {
+                    e.takeDamage(this.def.dmg);
+                    GAME.particles.push(new Particle(this.x, this.y, this.def.color, 3, 10));
+                }
+                break;
+            }
+        }
+
+        if (hit || this.life > this.maxLife) {
+            if (this.def.aoe > 0 && !hit && this.life > this.maxLife) this.explode();
+            return false;
+        }
+        return true; 
+    }
+
+    explode() {
+        createExplosion(this.x, this.y, this.def.aoe);
+        for (let e of GAME.enemies) {
+            let d = dist(this, e);
+            if (d < this.def.aoe) {
+                let dmg = this.def.dmg * (1 - (d / this.def.aoe));
+                e.takeDamage(dmg);
+            }
+        }
+    }
+
+    draw() {
+        ctx.save();
+        ctx.translate(this.x, this.y);
+        ctx.rotate(this.angle);
+        
+        ctx.fillStyle = this.def.color;
+        if (this.def.type === 'bullet') {
+            ctx.fillRect(0, -1, 6, 2);
+        } else if (this.def.type === 'guided') {
+            ctx.fillRect(-3, -2, 6, 4);
+        } else {
+            ctx.beginPath();
+            ctx.arc(0, 0, 3, 0, Math.PI*2);
+            ctx.fill();
+        }
+        
+        ctx.restore();
+    }
+}
+
+class Enemy {
+    constructor(hp, speed, reward) {
+        this.x = GAME.path[0].x;
+        this.y = GAME.path[0].y;
+        this.pathIndex = 1;
+        this.hp = hp;
+        this.maxHp = hp;
+        this.speed = speed;
+        this.reward = reward;
+        this.size = 10;
+    }
+
+    getHeading() {
+        let target = GAME.path[this.pathIndex];
+        if (!target) return 0;
+        return Math.atan2(target.y - this.y, target.x - this.x);
+    }
+
+    takeDamage(amount) {
+        this.hp -= amount;
+    }
+
+    update() {
+        let target = GAME.path[this.pathIndex];
+        let d = dist(this, target);
+        
+        if (d < this.speed) {
+            this.x = target.x;
+            this.y = target.y;
+            this.pathIndex++;
+            if (this.pathIndex >= GAME.path.length) {
+                GAME.lives--;
+                updateTopHUD();
+                return false; 
+            }
+        } else {
+            let a = Math.atan2(target.y - this.y, target.x - this.x);
+            this.x += Math.cos(a) * this.speed;
+            this.y += Math.sin(a) * this.speed;
+        }
+        
+        if (this.hp <= 0) {
+            addMoney(this.reward);
+            createExplosion(this.x, this.y, 20);
+            return false; 
+        }
+        return true; 
+    }
+
+    draw() {
+        ctx.save();
+        ctx.translate(this.x, this.y);
+        
+        ctx.fillStyle = '#ef4444';
+        ctx.strokeStyle = '#7f1d1d';
+        ctx.lineWidth = 2;
+        
+        ctx.beginPath();
+        ctx.rect(-this.size/2, -this.size/2, this.size, this.size);
+        ctx.fill();
+        ctx.stroke();
+        
+        ctx.fillStyle = '#333';
+        ctx.fillRect(-10, -15, 20, 4);
+        ctx.fillStyle = '#10b981';
+        ctx.fillRect(-10, -15, 20 * (Math.max(0, this.hp) / this.maxHp), 4);
+        
+        ctx.restore();
+    }
+}
+
+class Particle {
+    constructor(x, y, color, size, life) {
+        this.x = x; this.y = y;
+        this.color = color;
+        this.size = size;
+        this.maxLife = life;
+        this.life = life;
+        let a = Math.random() * Math.PI * 2;
+        let s = Math.random() * 2;
+        this.vx = Math.cos(a) * s;
+        this.vy = Math.sin(a) * s;
+    }
+    update() {
+        this.x += this.vx; this.y += this.vy;
+        this.life--;
+        return this.life > 0;
+    }
+    draw() {
+        ctx.globalAlpha = this.life / this.maxLife;
+        ctx.fillStyle = this.color;
+        ctx.beginPath();
+        ctx.arc(this.x, this.y, this.size, 0, Math.PI*2);
+        ctx.fill();
+        ctx.globalAlpha = 1.0;
+    }
+}
+
+class FloatingText {
+    constructor(x, y, text, color) {
+        this.x = x; this.y = y; this.text = text; this.color = color;
+        this.life = 60;
+    }
+    update() {
+        this.y -= 0.5;
+        this.life--;
+        return this.life > 0;
+    }
+    draw() {
+        ctx.globalAlpha = this.life / 60;
+        ctx.fillStyle = this.color;
+        ctx.font = 'bold 16px sans-serif';
+        ctx.textAlign = 'center';
+        ctx.fillText(this.text, this.x, this.y);
+        ctx.globalAlpha = 1.0;
+    }
+}
+let floatingTexts = [];
+
+/**
+ * GAME LOGIC
+ */
+
+function addMoney(amt) {
+    GAME.money += amt;
+    updateTopHUD();
+    renderUI(); 
+}
+
+function updateTopHUD() {
+    UI.money.innerText = GAME.money;
+    UI.lives.innerText = GAME.lives;
+    UI.wave.innerText = GAME.wave;
+    
+    if(GAME.lives <= 0) {
+        GAME.state = 'GAME_OVER';
+        renderGameOver();
+    }
+}
+
+function createExplosion(x, y, radius) {
+    ctx.fillStyle = 'rgba(255, 165, 0, 0.5)';
+    ctx.beginPath(); ctx.arc(x, y, radius, 0, Math.PI*2); ctx.fill();
+    for(let i=0; i<10; i++) GAME.particles.push(new Particle(x, y, '#ea580c', Math.random()*4+2, 20));
+}
+
+function createFloatingText(x, y, text, color) {
+    floatingTexts.push(new FloatingText(x, y, text, color));
+}
+
+function startWave() {
+    if (GAME.waveActive) return;
+    GAME.wave++;
+    GAME.waveActive = true;
+    GAME.enemiesToSpawn = 10 + Math.floor(GAME.wave * 1.5);
+    GAME.enemySpawnTimer = 0;
+    updateTopHUD();
+    UI.btnNextWave.classList.add('opacity-50', 'cursor-not-allowed');
+    UI.btnNextWave.innerText = 'WAVE IN PROGRESS';
+}
+
+function spawnEnemy() {
+    let hp = 50 + (GAME.wave * 40) + Math.pow(GAME.wave, 2);
+    let speed = 0.8 + Math.min(GAME.wave * 0.05, 1.5);
+    let reward = 10 + Math.floor(GAME.wave * 2);
+    GAME.enemies.push(new Enemy(hp, speed, reward));
+}
+
+/**
+ * UI RENDERING 
+ */
+function renderUI() {
+    if (GAME.state === 'GAME_OVER') return;
+    
+    let html = '';
+
+    if (GAME.selectedBase) {
+        const b = GAME.selectedBase;
+        html += `
+            <div class="mb-2">
+                <button onclick="deselectBase()" class="text-xs text-slate-400 hover:text-white mb-2 flex items-center gap-1">
+                    <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 19l-7-7 7-7"></path></svg>
+                    Back to Build Menu
+                </button>
+                <h2 class="text-xl font-bold text-[${b.def.color}]">${b.def.name}</h2>
+                <p class="text-xs text-slate-400 mt-1">${b.def.desc || 'Manage stationed aircraft.'}</p>
+            </div>
+            <div class="space-y-3">
+        `;
+        
+        if (b.slots.length === 0) {
+            html += `<div class="p-4 bg-slate-800 rounded text-sm text-slate-400 italic">No aircraft slots available.</div>`;
+        }
+
+        b.slots.forEach((slot, idx) => {
+            html += `<div class="p-3 bg-slate-800 rounded border border-slate-700">`;
+            html += `<div class="text-xs font-bold text-slate-500 uppercase mb-2">Slot ${idx+1} (${slot.req})</div>`;
+            
+            if (slot.unit) {
+                let uDef = UNIT_TYPES[slot.unit.typeId];
+                html += `
+                    <div class="flex justify-between items-center">
+                        <div>
+                            <div class="font-bold text-sky-400">${uDef.name}</div>
+                            <div class="text-xs text-slate-400">State: ${slot.unit.state}</div>
+                        </div>
+                        <button onclick="sellUnit(${GAME.bases.indexOf(b)}, ${idx})" class="text-xs bg-rose-900/50 hover:bg-rose-800 text-rose-300 py-1 px-2 rounded">SELL</button>
+                    </div>
+                `;
+            } else {
+                let validTypes = Object.entries(UNIT_TYPES).filter(([k,v]) => slot.req.includes(v.cat) || slot.req === 'any');
+                
+                html += `<div class="flex flex-col gap-2">`;
+                validTypes.forEach(([tId, tDef]) => {
+                    let canAfford = GAME.money >= tDef.cost;
+                    html += `
+                        <button onclick="buyUnit(${GAME.bases.indexOf(b)}, ${idx}, '${tId}')" 
+                            class="flex justify-between items-center text-left p-2 rounded bg-slate-700/50 hover:bg-slate-700 transition-colors ${!canAfford ? 'opacity-50 cursor-not-allowed' : ''}"
+                            ${!canAfford ? 'disabled' : ''}>
+                            <div>
+                                <div class="text-sm font-bold text-slate-200">${tDef.name}</div>
+                                <div class="text-[10px] text-slate-400">${tDef.weapons.map(w=>WEAPONS[w.type].name).join(', ')}</div>
+                            </div>
+                            <div class="text-emerald-400 font-mono text-sm font-bold">$${tDef.cost}</div>
+                        </button>
+                    `;
+                });
+                html += `</div>`;
+            }
+            html += `</div>`;
+        });
+        
+        html += `</div>`;
+        
+    } else {
+        html += `<h2 class="text-sm font-bold text-slate-400 uppercase tracking-wider mb-2">Construct Base</h2>`;
+        
+        Object.entries(BASE_TYPES).forEach(([id, def]) => {
+            let canAfford = GAME.money >= def.cost;
+            let placing = GAME.placingBaseType === id;
+            html += `
+                <button onclick="togglePlaceMode('${id}')" 
+                    class="relative p-4 rounded-xl border-2 text-left transition-all overflow-hidden group
+                    ${placing ? `border-[${def.color}] bg-slate-800` : `border-slate-700 bg-slate-800/50 hover:bg-slate-700/80`} 
+                    ${!canAfford ? 'opacity-50 cursor-not-allowed' : ''}">
+                    
+                    <div class="absolute right-[-20px] top-[-20px] w-20 h-20 rounded-full opacity-10 group-hover:scale-150 transition-transform" style="background-color: ${def.color}"></div>
+                    
+                    <div class="flex justify-between items-start relative z-10">
+                        <div class="font-bold text-slate-100">${def.name}</div>
+                        <div class="text-emerald-400 font-mono font-bold">$${def.cost}</div>
+                    </div>
+                    <div class="text-xs text-slate-400 mt-1 relative z-10">${def.slots.length > 0 ? 'Capacity: ' + def.slots.join(', ') : def.desc}</div>
+                </button>
+            `;
+        });
+    }
+
+    UI.panel.innerHTML = html;
+}
+
+function renderGameOver() {
+    UI.panel.innerHTML = `
+        <div class="flex flex-col items-center justify-center h-full text-center">
+            <h1 class="text-4xl font-black text-rose-500 mb-2">DEFEAT</h1>
+            <p class="text-slate-400 mb-6">The enemy breached your defenses.</p>
+            <div class="text-2xl font-mono text-cyan-400 mb-8">Waves Survived: ${GAME.wave - 1}</div>
+            <button onclick="location.reload()" class="bg-slate-700 hover:bg-slate-600 text-white font-bold py-3 px-8 rounded-xl shadow-lg transition-all">
+                RESTART OPERATION
+            </button>
+        </div>
+    `;
+    
+    ctx.fillStyle = 'rgba(0,0,0,0.7)';
+    ctx.fillRect(0, 0, width, height);
+}
+
+/**
+ * INTERACTION LOGIC
+ */
+function togglePlaceMode(typeId) {
+    if (GAME.money < BASE_TYPES[typeId].cost) return;
+    if (GAME.placingBaseType === typeId) {
+        GAME.placingBaseType = null;
+    } else {
+        GAME.placingBaseType = typeId;
+        GAME.selectedBase = null;
+    }
+    renderUI();
+}
+
+function deselectBase() {
+    GAME.selectedBase = null;
+    renderUI();
+}
+
+function buyUnit(baseIdx, slotIdx, typeId) {
+    let b = GAME.bases[baseIdx];
+    let cost = UNIT_TYPES[typeId].cost;
+    if (GAME.money >= cost) {
+        addMoney(-cost);
+        let u = new Unit(b, slotIdx, typeId);
+        b.slots[slotIdx].unit = u;
+        GAME.units.push(u);
+        renderUI();
+    }
+}
+
+function sellUnit(baseIdx, slotIdx) {
+    let b = GAME.bases[baseIdx];
+    let u = b.slots[slotIdx].unit;
+    if (u) {
+        addMoney(Math.floor(UNIT_TYPES[u.typeId].cost * 0.5)); 
+        GAME.units = GAME.units.filter(x => x !== u);
+        b.slots[slotIdx].unit = null;
+        renderUI();
+    }
+}
+
+canvas.addEventListener('mousedown', (e) => {
+    if (GAME.state !== 'BUILD' && GAME.state !== 'PLAY') return;
+    
+    const rect = canvas.getBoundingClientRect();
+    const mx = e.clientX - rect.left;
+    const my = e.clientY - rect.top;
+
+    if (GAME.placingBaseType) {
+        let def = BASE_TYPES[GAME.placingBaseType];
+        let valid = true;
+        for(let p of GAME.path) {
+            if (dist({x:mx, y:my}, p) < def.size + 20) valid = false; 
+        }
+        for(let b of GAME.bases) {
+            if (dist({x:mx, y:my}, b) < (def.size + b.def.size)/2 + 10) valid = false;
+        }
+
+        if (valid && GAME.money >= def.cost) {
+            addMoney(-def.cost);
+            GAME.bases.push(new Base(mx, my, GAME.placingBaseType));
+            GAME.placingBaseType = null;
+            createFloatingText(mx, my, '+$' + def.cost, '#f43f5e'); 
+            renderUI();
+        }
+    } else {
+        let clickedBase = null;
+        for (let b of GAME.bases) {
+            if (dist({x:mx, y:my}, b) < b.def.size) {
+                clickedBase = b;
+                break;
+            }
+        }
+        GAME.selectedBase = clickedBase;
+        renderUI();
+    }
+});
+
+canvas.addEventListener('mousemove', (e) => {
+    if (GAME.placingBaseType) {
+        const rect = canvas.getBoundingClientRect();
+        GAME.mouseX = e.clientX - rect.left;
+        GAME.mouseY = e.clientY - rect.top;
+    }
+});
+
+UI.btnNextWave.addEventListener('click', startWave);
+
+/**
+ * MAIN LOOP
+ */
+function update() {
+    if (GAME.state === 'GAME_OVER') return;
+    GAME.state = GAME.waveActive ? 'PLAY' : 'BUILD';
+
+    if (GAME.waveActive) {
+        if (GAME.enemiesToSpawn > 0) {
+            GAME.enemySpawnTimer++;
+            if (GAME.enemySpawnTimer > 60 - Math.min(GAME.wave*2, 40)) { 
+                spawnEnemy();
+                GAME.enemiesToSpawn--;
+                GAME.enemySpawnTimer = 0;
+            }
+        } else if (GAME.enemies.length === 0) {
+            GAME.waveActive = false;
+            UI.btnNextWave.classList.remove('opacity-50', 'cursor-not-allowed');
+            UI.btnNextWave.innerText = 'START NEXT WAVE';
+        }
+    }
+
+    GAME.bases.forEach(b => b.update());
+    GAME.units.forEach(u => u.update());
+    
+    GAME.enemies = GAME.enemies.filter(e => e.update());
+    GAME.projectiles = GAME.projectiles.filter(p => p.update());
+    GAME.particles = GAME.particles.filter(p => p.update());
+    floatingTexts = floatingTexts.filter(ft => ft.update());
+}
+
+function draw() {
+    if (GAME.state === 'GAME_OVER') return;
+    
+    ctx.clearRect(0, 0, width, height);
+
+    ctx.strokeStyle = '#1e293b';
+    ctx.lineWidth = 1;
+    for(let i=0; i<width; i+=50) { ctx.beginPath(); ctx.moveTo(i,0); ctx.lineTo(i,height); ctx.stroke(); }
+    for(let i=0; i<height; i+=50) { ctx.beginPath(); ctx.moveTo(0,i); ctx.lineTo(width,i); ctx.stroke(); }
+
+    if (GAME.path.length > 0) {
+        ctx.strokeStyle = '#334155';
+        ctx.lineWidth = 30;
+        ctx.lineCap = 'round';
+        ctx.lineJoin = 'round';
+        ctx.beginPath();
+        ctx.moveTo(GAME.path[0].x, GAME.path[0].y);
+        for(let i=1; i<GAME.path.length; i++) ctx.lineTo(GAME.path[i].x, GAME.path[i].y);
+        ctx.stroke();
+        
+        ctx.strokeStyle = '#475569';
+        ctx.lineWidth = 26;
+        ctx.stroke();
+    }
+
+    GAME.bases.forEach(b => {
+        if (b === GAME.selectedBase) {
+            ctx.fillStyle = 'rgba(255,255,255,0.1)';
+            ctx.beginPath(); ctx.arc(b.x, b.y, b.def.size + 10, 0, Math.PI*2); ctx.fill();
+        }
+        b.draw();
+    });
+    
+    GAME.enemies.forEach(e => e.draw());
+    GAME.projectiles.forEach(p => p.draw());
+    GAME.particles.forEach(p => p.draw());
+    GAME.units.forEach(u => u.draw());
+    floatingTexts.forEach(ft => ft.draw());
+
+    if (GAME.placingBaseType && GAME.mouseX) {
+        let def = BASE_TYPES[GAME.placingBaseType];
+        ctx.save();
+        ctx.globalAlpha = 0.5;
+        ctx.translate(GAME.mouseX, GAME.mouseY);
+        ctx.strokeStyle = def.color;
+        ctx.lineWidth = 2;
+        ctx.beginPath();
+        if (GAME.placingBaseType === 'HELIPAD') ctx.arc(0, 0, def.size/2, 0, Math.PI*2);
+        else ctx.rect(-def.size/2, -def.size/2, def.size, def.size);
+        ctx.stroke();
+        
+        ctx.strokeStyle = 'rgba(255,255,255,0.2)';
+        ctx.beginPath(); ctx.arc(0, 0, 150, 0, Math.PI*2); ctx.stroke();
+        ctx.restore();
+    }
+}
+
+function gameLoop() {
+    update();
+    draw();
+    requestAnimationFrame(gameLoop);
+}
+
+resize();
+updateTopHUD();
+renderUI();
+gameLoop();
+
+</script>
+</body>
+</html>
