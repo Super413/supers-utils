@@ -1,0 +1,122 @@
+[
+  {
+    "name": "Tarkov Ish",
+    "file": "games/Tarkov-ish.html",
+    "image": "images/Tarkov-ish.png",
+    "featured": false
+  },
+  {
+    "name": "Aerocommand Take 2",
+    "file": "games/aerocommand take 2.html",
+    "image": "images/aerocommand take 2.png",
+    "featured": false
+  },
+  {
+    "name": "Aerodefense",
+    "file": "games/aerodefense.html",
+    "image": "images/aerodefense.png",
+    "featured": false
+  },
+  {
+    "name": "Another Zombie Survival",
+    "file": "games/another zombie survival.html",
+    "image": "images/another zombie survival.png",
+    "featured": false
+  },
+  {
+    "name": "Chronomancer",
+    "file": "games/chronomancer.html",
+    "image": "images/chronomancer.png",
+    "featured": false
+  },
+  {
+    "name": "Citysim",
+    "file": "games/citysim.html",
+    "image": "images/citysim.png",
+    "featured": false
+  },
+  {
+    "name": "Diep.Io",
+    "file": "games/diep.io.html",
+    "image": "images/diep.io.png",
+    "featured": false
+  },
+  {
+    "name": "Evolution Sim",
+    "file": "games/evolution sim.html",
+    "image": "images/evolution sim.png",
+    "featured": false
+  },
+  {
+    "name": "Kinda Risk",
+    "file": "games/kinda risk.html",
+    "image": "images/kinda risk.png",
+    "featured": false
+  },
+  {
+    "name": "Logi RTS",
+    "file": "games/logi RTS.html",
+    "image": "images/logi RTS.png",
+    "featured": false
+  },
+  {
+    "name": "Logistics Corp Rts",
+    "file": "games/logistics-corp-rts.html",
+    "image": "images/logistics-corp-rts.png",
+    "featured": false
+  },
+  {
+    "name": "Metroflow",
+    "file": "games/metroflow.html",
+    "image": "images/metroflow.png",
+    "featured": false
+  },
+  {
+    "name": "Misc Survival Zombie Game",
+    "file": "games/misc survival zombie game.html",
+    "image": "images/misc survival zombie game.png",
+    "featured": false
+  },
+  {
+    "name": "Naval Game 1",
+    "file": "games/naval game 1.html",
+    "image": "images/naval game 1.png",
+    "featured": false
+  },
+  {
+    "name": "Not CMO",
+    "file": "games/not CMO.html",
+    "image": "images/not CMO.png",
+    "featured": false
+  },
+  {
+    "name": "Not Doodlejump",
+    "file": "games/not-doodlejump.html",
+    "image": "images/not-doodlejump.png",
+    "featured": false
+  },
+  {
+    "name": "Sky Commander RTS",
+    "file": "games/sky-commander RTS.html",
+    "image": "images/sky-commander RTS.png",
+    "featured": false
+  },
+  {
+    "name": "Text Roguelike",
+    "file": "games/text-roguelike.html",
+    "image": "images/text-roguelike.png",
+    "featured": false
+  },
+  {
+    "name": "Tower Defense",
+    "file": "games/tower defense.html",
+    "image": "images/tower defense.png",
+    "featured": false
+  },
+  {
+    "name": "Zombz Ripoff",
+    "file": "games/zombz ripoff.html",
+    "image": "images/zombz ripoff.png",
+    "featured": false
+  }
+]
