@@ -7,3 +7,4 @@ This is my personal little stash of code utils I use or have used for various th
 # How to use
 Access a helpful little portal [here](https://super413.github.io/supers-utils/)
 <br>If forking to add your own scripts, run ```generate.js``` to create a ```generated.json``` file, this acts as the search index it will be based off.
+<br> Each game item also has an image associated with it in images/, be sure it matches the filename for it to appear, etc ```gamey_game.html``` should have an image called ```gamey_game.png```.
