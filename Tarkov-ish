@@ -1,0 +1,1727 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>Scavenger's Decay - Extraction Shooter</title>
+    <style>
+        :root {
+            --bg-color: #0d0d0d;
+            --ui-bg: rgba(15, 15, 15, 0.98);
+            --ui-border: #555;
+            --text-color: #dcdcdc;
+            --accent: #e6b800;
+            --danger: #d94343;
+            --success: #4caf50;
+            --extract: #00b7ff;
+            --slot-size: 45px; 
+        }
+        body { margin: 0; overflow: hidden; background: var(--bg-color); font-family: 'Courier New', monospace; color: var(--text-color); user-select: none; }
+        canvas { display: block; }
+        
+        /* UI Overlay */
+        #ui-layer {
+            position: absolute; top: 0; left: 0; width: 100%; height: 100%; pointer-events: none;
+            display: flex; flex-direction: column; justify-content: space-between;
+        }
+        
+        /* HUD */
+        #hud { padding: 10px; pointer-events: auto; display: flex; gap: 20px; background: linear-gradient(to bottom, rgba(0,0,0,0.9), transparent); }
+        .stat-box { display: flex; flex-direction: column; width: 100px; }
+        .stat-label { font-size: 10px; color: #999; text-transform: uppercase; font-weight: bold; }
+        .bar-container { width: 100%; height: 8px; background: #222; margin-top: 4px; border: 1px solid #444; box-shadow: 0 0 5px rgba(0,0,0,0.5); }
+        .bar-fill { height: 100%; transition: width 0.2s; }
+        
+        #extract-msg {
+            position: absolute; top: 20%; left: 50%; transform: translate(-50%, -50%);
+            color: var(--extract); font-size: 24px; font-weight: bold; text-shadow: 0 0 10px var(--extract);
+            display: none; animation: pulse 1s infinite;
+        }
+        @keyframes pulse { 0% { opacity:0.5; } 50% { opacity:1; } 100% { opacity:0.5; } }
+
+        /* Action Bar */
+        #action-bar-container {
+            position: absolute; bottom: 30%; left: 50%; transform: translateX(-50%);
+            width: 200px; height: 10px; background: #222; border: 1px solid #fff; display: none;
+        }
+        #action-bar-fill { height: 100%; background: var(--accent); width: 0%; transition: width 0.1s linear; }
+        #action-label {
+            position: absolute; bottom: 32%; left: 50%; transform: translateX(-50%);
+            font-size: 12px; color: #fff; text-shadow: 1px 1px 0 #000; display: none;
+        }
+
+        /* Message Log */
+        #log-container {
+            position: absolute; bottom: 20px; left: 20px; width: 350px; height: 180px;
+            overflow: hidden; pointer-events: none; text-shadow: 1px 1px 2px #000;
+            background: linear-gradient(to top, rgba(0,0,0,0.8), transparent);
+            padding: 10px; border-radius: 4px;
+        }
+        .log-entry { font-size: 13px; margin-bottom: 5px; opacity: 0.9; font-weight: bold; }
+
+        /* SCALABLE MENU CONTAINER */
+        #menu-overlay, #hideout-menu, #loot-menu {
+            position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%);
+            width: 98vw; height: 90vh; 
+            max-width: 1200px; max-height: 800px;
+            background: var(--ui-bg); border: 1px solid var(--ui-border);
+            display: none; pointer-events: auto; box-shadow: 0 0 50px rgba(0,0,0,0.8);
+            flex-direction: row; border-radius: 4px;
+            font-size: 12px;
+        }
+        
+        .panel { 
+            flex: 1; padding: 10px; 
+            overflow: auto; 
+            border-right: 1px solid #333; 
+            display: flex; flex-direction: column; 
+            min-width: 200px; 
+        }
+        .panel:last-child { border-right: none; }
+        .scroll-content { overflow-y: auto; flex: 1; }
+        
+        h2 { margin-top: 0; border-bottom: 1px solid var(--accent); padding-bottom: 5px; font-size: 16px; color: var(--accent); letter-spacing: 1px; display: flex; justify-content: space-between; }
+        
+        /* Filters */
+        .filter-bar { margin-bottom: 5px; display: flex; flex-wrap: wrap; gap: 2px; }
+        .filter-btn {
+            background: #222; border: 1px solid #444; color: #888; padding: 3px 6px; 
+            font-size: 10px; cursor: pointer; flex: 1; text-align: center;
+        }
+        .filter-btn:hover { background: #333; color: #fff; }
+        .filter-btn.active { background: #444; color: var(--accent); border-color: var(--accent); }
+
+        /* Main Menu */
+        #main-menu {
+            position: absolute; top: 0; left: 0; width: 100%; height: 100%;
+            background: rgba(0,0,0,0.9);
+            display: flex; flex-direction: column; align-items: center; justify-content: center;
+            pointer-events: auto; z-index: 100;
+        }
+        .menu-title { font-size: 48px; color: var(--text-color); margin-bottom: 40px; text-shadow: 0 0 10px var(--accent); letter-spacing: 5px; text-align: center;}
+        .menu-btn {
+            background: transparent; border: 2px solid #555; color: #aaa;
+            padding: 15px 40px; margin: 10px; font-size: 18px; cursor: pointer;
+            width: 250px; text-align: center; transition: 0.3s; letter-spacing: 2px;
+        }
+        .menu-btn:hover { border-color: var(--accent); color: #fff; background: rgba(230, 184, 0, 0.1); }
+        .menu-btn:active { background: var(--accent); color: #000; }
+        
+        /* GRID SYSTEM */
+        .inv-grid {
+            position: relative; background: #222; border: 1px solid #444; margin: 0 auto;
+            background-image: 
+                linear-gradient(#333 1px, transparent 1px),
+                linear-gradient(90deg, #333 1px, transparent 1px);
+            background-size: var(--slot-size) var(--slot-size);
+        }
+        
+        .grid-item {
+            position: absolute; background: #3a3a3a; border: 1px solid #666;
+            cursor: pointer; box-sizing: border-box; display: flex; flex-direction: column;
+            justify-content: center; align-items: center; font-size: 10px; text-align: center;
+            overflow: hidden; z-index: 10; transition: transform 0.1s, border-color 0.1s;
+            box-shadow: 2px 2px 5px rgba(0,0,0,0.5);
+        }
+        .grid-item:hover { border-color: #fff; transform: scale(1.02); z-index: 11; }
+        .grid-item.selected { border: 2px solid var(--accent); background: #444; z-index: 12; }
+        .grid-item-icon { font-size: 18px; margin-bottom: 2px; }
+        .grid-item-name { font-size: 9px; line-height: 1; pointer-events: none; }
+        .grid-item-meta { position: absolute; bottom: 1px; right: 1px; font-size: 8px; color: #aaa; background: rgba(0,0,0,0.8); padding: 1px 2px; border-radius: 2px; }
+
+        /* Item Type Colors */
+        .type-weapon { background: #3a2a2a; border-left: 2px solid #d94343; }
+        .type-armor { background: #2a2a3a; border-left: 2px solid #4363d9; }
+        .type-medical { background: #2a3a2a; border-left: 2px solid #4caf50; }
+        .type-food { background: #3a3a2a; border-left: 2px solid #e6b800; }
+        .type-part { background: #252525; border-left: 2px solid #888; }
+
+        /* Character Slots */
+        #gear-slots { display: flex; flex-direction: column; gap: 5px; align-items: center; margin-bottom: 10px; }
+        .gear-slot {
+            width: 100%; height: 50px; border: 1px dashed #555; display: flex; flex-direction: column;
+            justify-content: center; align-items: center; background: rgba(0,0,0,0.2); cursor: pointer;
+            position: relative;
+        }
+        .gear-slot:hover { background: rgba(255,255,255,0.05); border-color: #888; }
+        .gear-slot.equipped { border-style: solid; border-color: var(--accent); background: #1a1a1a; }
+        .gear-label { font-size: 9px; color: #666; text-transform: uppercase; margin-bottom: 2px; }
+        .gear-name { font-size: 11px; font-weight: bold; color: #ddd; text-align: center;}
+        
+        button {
+            background: #2a2a2a; color: #ddd; border: 1px solid #444; padding: 6px 10px; cursor: pointer; font-family: inherit; margin: 2px;
+            text-transform: uppercase; font-size: 10px; letter-spacing: 1px; transition: background 0.2s;
+        }
+        button:hover { background: #333; border-color: var(--accent); color: #fff; }
+        
+        /* Weapon/Armor Parts */
+        #assembly-view { display: none; flex-direction: column; margin-top: 5px; border-top: 1px solid #333; padding-top: 5px; flex: 1; overflow-y: auto;}
+        .part-slot { margin: 2px 0; padding: 6px; border: 1px dashed #444; text-align: center; font-size: 10px; cursor: pointer; }
+        .part-slot.occupied { border-style: solid; border-color: #555; text-align: left; background: #1a1a1a; }
+        
+        .money-display { color: var(--success); font-weight: bold; font-size: 14px; }
+        
+        /* List items for stash list mode if needed, or shop */
+        .item-slot {
+            background: #222; border: 1px solid #333; margin-bottom: 2px; padding: 5px;
+            cursor: pointer; display: flex; justify-content: space-between; align-items: center;
+            transition: all 0.1s; font-size: 11px;
+        }
+        .item-slot:hover { background: #2a2a2a; border-color: var(--accent); }
+        .item-slot.shop-item { border-left: 3px solid var(--accent); }
+        .item-name { font-weight: bold; }
+        .item-cost { color: var(--success); font-weight: bold; }
+
+        .danger { color: #ff5555; }
+        .good { color: #55ff55; }
+    </style>
+</head>
+<body>
+
+<canvas id="gameCanvas"></canvas>
+
+<!-- IN-GAME HUD -->
+<div id="ui-layer" style="display:none">
+    <div id="extract-msg">PRESS [F] TO EXTRACT</div>
+    <div id="action-label">Healing...</div>
+    <div id="action-bar-container"><div id="action-bar-fill"></div></div>
+    
+    <div id="hud">
+        <div class="stat-box"><span class="stat-label">Health</span><div class="bar-container"><div id="bar-hp" class="bar-fill" style="background:#b93b3b; width:100%"></div></div></div>
+        <div class="stat-box"><span class="stat-label">Hunger</span><div class="bar-container"><div id="bar-hunger" class="bar-fill" style="background:#d4a017; width:100%"></div></div></div>
+        <div class="stat-box"><span class="stat-label">Thirst</span><div class="bar-container"><div id="bar-thirst" class="bar-fill" style="background:#3b8bb9; width:100%"></div></div></div>
+        <div class="stat-box"><span class="stat-label">Stamina</span><div class="bar-container"><div id="bar-stamina" class="bar-fill" style="background:#cfcfcf; width:100%"></div></div></div>
+    </div>
+    <div id="log-container"></div>
+</div>
+
+<!-- MAIN MENU -->
+<div id="main-menu">
+    <div class="menu-title">SCAVENGER'S DECAY</div>
+    <div class="menu-btn" onclick="Game.deploy()">DEPLOY TO RAID</div>
+    <div class="menu-btn" onclick="Hideout.open()">HIDEOUT</div>
+    <div class="menu-btn" onclick="Game.resetGame()" style="border-color: #933; color:#a66; margin-top:40px; font-size:12px; padding:10px;">RESET PROFILE</div>
+    <div style="margin-top:20px; color:#666; font-size:12px">Extraction Shooter Mode</div>
+</div>
+
+<!-- HIDEOUT / STASH / SHOP -->
+<div id="hideout-menu">
+    <!-- Stash Grid -->
+    <div class="panel" style="flex:1.5;">
+        <h2>STASH <span class="money-display">§<span id="stash-money">0</span></span></h2>
+        <div style="margin-bottom:10px;">
+            <button onclick="Hideout.toggleShop()" id="btn-shop-toggle">OPEN SHOP</button>
+            <button onclick="Hideout.close()">MAIN MENU</button>
+        </div>
+        <div id="stash-grid-container" class="scroll-content"></div>
+    </div>
+    <!-- Middle: Character -->
+    <div class="panel">
+        <h2>CHARACTER</h2>
+        <div id="hideout-gear-slots"></div>
+        <div style="margin-top:auto; font-size:10px; color:#666; text-align:center;">Click item to inspect/equip.<br>Rotate via inspection.</div>
+    </div>
+    <!-- Right: Backpack Grid -->
+    <div class="panel">
+        <h2>BACKPACK</h2>
+        <div id="hideout-backpack-container"></div>
+    </div>
+</div>
+
+<!-- LOOTING UI -->
+<div id="loot-menu">
+    <div class="panel" style="flex:1.5;">
+        <h2><span id="loot-title">CONTAINER</span></h2>
+        <div id="loot-container-grid"></div>
+        <button style="margin-top:10px; width:100%" onclick="LootUI.takeAll()">TAKE ALL</button>
+    </div>
+    <div class="panel">
+        <h2>BACKPACK</h2>
+        <div id="loot-backpack-grid"></div>
+        <div style="margin-top:20px; color:#666; font-size:11px; text-align:center">
+            Click to transfer.
+        </div>
+        <button style="margin-top:auto; width:100%" onclick="LootUI.close()">CLOSE</button>
+    </div>
+</div>
+
+<!-- IN-GAME INVENTORY -->
+<div id="menu-overlay">
+    <!-- Left: Inventory Grid -->
+    <div class="panel" id="panel-inventory" style="flex:1.2;">
+        <h2>Backpack</h2>
+        <div id="ingame-backpack-grid"></div>
+    </div>
+    
+    <!-- Middle: Character -->
+    <div class="panel" id="panel-character">
+        <h2>CHARACTER</h2>
+        <div id="gear-slots-ingame"></div>
+        <div style="margin-top:10px; border-top:1px solid #333; padding-top:5px;">
+            <div class="stat-label">Weapon Stats</div>
+            <div id="char-weapon-stats" style="font-size:11px; color:#aaa;">No Weapon</div>
+        </div>
+    </div>
+
+    <!-- Right: Status (Top) & Inspection (Bottom) -->
+    <div class="panel" id="panel-right">
+        <div style="height:35%; padding-bottom:5px; border-bottom:1px solid #333; min-height: 150px;">
+            <h2>Status</h2>
+            <div style="background:#111; padding:10px; border:1px solid #333; font-size:11px; line-height:1.4; color:#bbb;">
+                Temp: <span id="val-temp" style="color:#fff">20°C</span><br>
+                Blood: <span id="val-blood" style="color:#fff">5.0L</span><br>
+                State: <span id="val-status">Healthy</span>
+            </div>
+            <div style="margin-top:5px; font-size: 10px; color:#666;">
+                [E] Loot &nbsp; [F] Extract &nbsp; [L] Light<br>
+                [TAB] Inv &nbsp; [R] Reload
+            </div>
+            <button onclick="Game.exitRaid(false)" style="margin-top:5px; width:100%; border-color:#933; color:#a66;">ABORT RAID</button>
+        </div>
+        
+        <div style="flex:1; display:flex; flex-direction:column; padding-top:5px; overflow:hidden;">
+            <h2>Inspection</h2>
+            <div id="item-details-content" style="color:#666; font-style:italic;">Select an item...</div>
+            <div id="context-actions" style="display:flex; flex-wrap:wrap;"></div>
+            <div id="assembly-view">
+                <h3 style="font-size:11px; color:var(--accent); margin-bottom:5px;">COMPONENTS</h3>
+                <div id="parts-container"></div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<script>
+/**
+ * Scavenger's Decay - Extraction Edition v12
+ */
+
+// --- UTILS ---
+const $ = id => document.getElementById(id);
+const rand = (min, max) => Math.random() * (max - min) + min;
+const randInt = (min, max) => Math.floor(rand(min, max));
+const dist = (x1, y1, x2, y2) => Math.hypot(x2 - x1, y2 - y1);
+const clamp = (val, min, max) => Math.min(Math.max(val, min), max);
+
+// --- DATA ---
+const TILE_SIZE = 40;
+const MAP_SIZE = 100;
+const SLOT_SIZE = 45;
+
+const TILES = { GRASS: 0, TREE: 1, FLOOR: 3, WALL: 4 };
+
+const PARTS = {
+    BARREL: 'barrel', RECEIVER: 'receiver', BOLT: 'bolt', SPRING: 'spring', TRIGGER: 'trigger', MAG: 'magazine', STOCK: 'stock',
+    PLATE: 'plate', VISOR: 'visor',
+    SLIDE: 'slide', GRIP: 'grip'
+};
+
+const ARMOR_SLOTS = { HEAD: 'head', BODY: 'body', BELT: 'belt' };
+
+const ITEM_TYPES = {
+    MISC: 'misc', FOOD: 'food', MED: 'medical', 
+    WEAPON: 'weapon', ARMOR: 'armor', PART: 'part', AMMO: 'ammo'
+};
+
+const ITEMS_DB = {
+    // Food
+    'canned_beans': { name: 'Beans', type: ITEM_TYPES.FOOD, w:1, h:1, hunger: 30, thirst: 5, icon: '🥫', value: 30, useTime: 2 },
+    'tuna_can': { name: 'Tuna', type: ITEM_TYPES.FOOD, w:1, h:1, hunger: 25, thirst: 0, icon: '🐟', value: 35, useTime: 2 },
+    'crackers': { name: 'Crackers', type: ITEM_TYPES.FOOD, w:1, h:1, hunger: 15, thirst: -5, icon: '🍘', value: 15, useTime: 1 },
+    'energy_drink': { name: 'Energy Drk', type: ITEM_TYPES.FOOD, w:1, h:1, hunger: 5, thirst: 35, icon: '⚡', value: 40, useTime: 1.5 },
+    'apple_juice': { name: 'Juice', type: ITEM_TYPES.FOOD, w:1, h:1, hunger: 5, thirst: 25, icon: '🧃', value: 20, useTime: 1.5 },
+    'water_bottle': { name: 'Water', type: ITEM_TYPES.FOOD, w:1, h:2, hunger: 0, thirst: 40, icon: '💧', value: 25, useTime: 2 },
+    'mre_pack': { name: 'MRE Pack', type: ITEM_TYPES.FOOD, w:2, h:1, hunger: 80, thirst: 20, icon: '🍱', value: 100, useTime: 5 },
+
+    // Meds
+    'bandage': { name: 'Bandage', type: ITEM_TYPES.MED, w:1, h:1, heal: 10, stopBleed: true, icon: '🩹', value: 15, useTime: 3 },
+    'medkit': { name: 'Medkit', type: ITEM_TYPES.MED, w:2, h:2, heal: 50, stopBleed: true, icon: '🧰', value: 150, useTime: 5 },
+    'painkillers': { name: 'Painkillers', type: ITEM_TYPES.MED, w:1, h:1, heal: 5, stopBleed: false, icon: '💊', value: 45, useTime: 1 },
+
+    // Junk
+    'scrap_metal': { name: 'Scrap', type: ITEM_TYPES.MISC, w:1, h:1, icon: '⚙️', value: 10 },
+    'bolts': { name: 'Bolts', type: ITEM_TYPES.MISC, w:1, h:1, icon: '🔩', value: 15 },
+    'duct_tape': { name: 'Tape', type: ITEM_TYPES.MISC, w:1, h:1, icon: '🧶', value: 50 },
+    'wires': { name: 'Wires', type: ITEM_TYPES.MISC, w:1, h:1, icon: '➰', value: 80 },
+    'capacitor': { name: 'Capacitor', type: ITEM_TYPES.MISC, w:1, h:1, icon: '🔋', value: 60 },
+    'light_bulb': { name: 'Bulb', type: ITEM_TYPES.MISC, w:1, h:1, icon: '💡', value: 40 },
+    'wrench': { name: 'Wrench', type: ITEM_TYPES.MISC, w:1, h:2, icon: '🔧', value: 150 },
+    'screwdriver': { name: 'ScrewDr', type: ITEM_TYPES.MISC, w:1, h:1, icon: '🪛', value: 50 },
+    'hose': { name: 'Hose', type: ITEM_TYPES.MISC, w:2, h:2, icon: '🐍', value: 200 },
+    'bleach': { name: 'Bleach', type: ITEM_TYPES.MISC, w:1, h:2, icon: '🧴', value: 80 },
+    'toothpaste': { name: 'Toothpaste', type: ITEM_TYPES.MISC, w:1, h:1, icon: '🦷', value: 30 },
+    'circuit_board': { name: 'Circuit', type: ITEM_TYPES.MISC, w:1, h:1, icon: '📟', value: 120 },
+    'cpu': { name: 'CPU', type: ITEM_TYPES.MISC, w:1, h:1, icon: '💾', value: 200 },
+    'gold_watch': { name: 'Watch', type: ITEM_TYPES.MISC, w:1, h:1, icon: '⌚', value: 500 },
+    'gpu': { name: 'GPU', type: ITEM_TYPES.MISC, w:2, h:1, icon: '📼', value: 800 },
+    'power_drill': { name: 'Drill', type: ITEM_TYPES.MISC, w:2, h:2, icon: '🔨', value: 250 },
+    'gas_can': { name: 'Fuel', type: ITEM_TYPES.MISC, w:2, h:2, icon: '⛽', value: 150 },
+    'car_battery': { name: 'Battery', type: ITEM_TYPES.MISC, w:2, h:2, icon: '🪫', value: 200 },
+
+    // Ammo
+    'ammo_556': { name: '5.56mm', type: ITEM_TYPES.AMMO, w:1, h:1, icon: '🔸', value: 5 },
+    'ammo_9mm': { name: '9mm', type: ITEM_TYPES.AMMO, w:1, h:1, icon: '▫️', value: 3 },
+    
+    // Weapons
+    'rifle_m4': { 
+        name: 'M4 Carbine', type: ITEM_TYPES.WEAPON, w:4, h:2, icon: '🔫', family: 'ar15', value: 800,
+        baseAccuracy: 0.95, damage: 25, fireRate: 150,
+        slots: [PARTS.RECEIVER, PARTS.BOLT, PARTS.SPRING, PARTS.TRIGGER, PARTS.MAG, PARTS.STOCK]
+    },
+    'rifle_ak': {
+        name: 'AKM Rifle', type: ITEM_TYPES.WEAPON, w:5, h:2, icon: '🔫', family: 'ak', value: 700,
+        baseAccuracy: 0.85, damage: 30, fireRate: 200,
+        slots: [PARTS.RECEIVER, PARTS.BOLT, PARTS.SPRING, PARTS.TRIGGER, PARTS.MAG, PARTS.STOCK]
+    },
+    'pistol_1911': {
+        name: 'M1911', type: ITEM_TYPES.WEAPON, w:2, h:1, icon: '🔫', family: 'colt', value: 300,
+        baseAccuracy: 0.80, damage: 20, fireRate: 400,
+        slots: [PARTS.MAG] 
+    },
+    'rifle_rpk': {
+        name: 'RPK LMG', type: ITEM_TYPES.WEAPON, w:6, h:2, icon: '︻', family: 'ak', value: 2500,
+        baseAccuracy: 0.80, damage: 32, fireRate: 120,
+        slots: [PARTS.RECEIVER, PARTS.BOLT, PARTS.SPRING, PARTS.TRIGGER, PARTS.MAG, PARTS.STOCK]
+    },
+
+    // Parts
+    'm4_receiver': { name: 'M4 Rec', type: ITEM_TYPES.PART, w:2, h:1, family: 'ar15', partType: PARTS.RECEIVER, durability: 100, icon: '⚙️', value: 200 },
+    'm4_bolt': { name: 'M4 Bolt', type: ITEM_TYPES.PART, w:1, h:1, family: 'ar15', partType: PARTS.BOLT, durability: 100, icon: '🔩', value: 150 },
+    'm4_spring': { name: 'M4 Spr', type: ITEM_TYPES.PART, w:1, h:1, family: 'ar15', partType: PARTS.SPRING, durability: 100, icon: '〰️', value: 50 },
+    'm4_trigger': { name: 'M4 Trig', type: ITEM_TYPES.PART, w:1, h:1, family: 'ar15', partType: PARTS.TRIGGER, durability: 100, icon: '🔧', value: 80 },
+    'm4_stock': { name: 'M4 Stock', type: ITEM_TYPES.PART, w:2, h:1, family: 'ar15', partType: PARTS.STOCK, durability: 100, icon: '📐', value: 60 },
+    'mag_556': { name: '5.56 Mag', type: ITEM_TYPES.PART, w:1, h:2, family: 'ar15', partType: PARTS.MAG, durability: 100, capacity: 30, ammoType: 'ammo_556', icon: '🔋', value: 40 },
+
+    'ak_receiver': { name: 'AK Rec', type: ITEM_TYPES.PART, w:2, h:1, family: 'ak', partType: PARTS.RECEIVER, durability: 100, icon: '⚙️', value: 180 },
+    'ak_bolt': { name: 'AK Bolt', type: ITEM_TYPES.PART, w:1, h:1, family: 'ak', partType: PARTS.BOLT, durability: 100, icon: '🔩', value: 120 },
+    'ak_spring': { name: 'AK Spr', type: ITEM_TYPES.PART, w:1, h:1, family: 'ak', partType: PARTS.SPRING, durability: 100, icon: '〰️', value: 40 },
+    'ak_trigger': { name: 'AK Trig', type: ITEM_TYPES.PART, w:1, h:1, family: 'ak', partType: PARTS.TRIGGER, durability: 100, icon: '🔧', value: 70 },
+    'ak_stock': { name: 'AK Stock', type: ITEM_TYPES.PART, w:2, h:1, family: 'ak', partType: PARTS.STOCK, durability: 100, icon: '📐', value: 50 },
+    'mag_762': { name: 'AK Mag', type: ITEM_TYPES.PART, w:1, h:2, family: 'ak', partType: PARTS.MAG, durability: 100, capacity: 30, ammoType: 'ammo_556', icon: '🔋', value: 35 },
+    'mag_drum': { name: 'RPK Drum', type: ITEM_TYPES.PART, w:2, h:2, family: 'ak', partType: PARTS.MAG, durability: 100, capacity: 75, ammoType: 'ammo_556', icon: '💿', value: 150 },
+    
+    'mag_1911': { name: '1911 Mag', type: ITEM_TYPES.PART, w:1, h:1, family: 'colt', partType: PARTS.MAG, durability: 100, capacity: 7, ammoType: 'ammo_9mm', icon: '🔋', value: 20 },
+
+    // Armor Items
+    'vest_police': { name: 'Police Vest', type: ITEM_TYPES.ARMOR, w:3, h:3, armorSlot: ARMOR_SLOTS.BODY, icon: '🦺', value: 300, slots: [PARTS.PLATE], mitigation: 0.2 },
+    'helmet_riot': { name: 'Riot Helmet', type: ITEM_TYPES.ARMOR, w:2, h:2, armorSlot: ARMOR_SLOTS.HEAD, icon: '⛑️', value: 250, slots: [PARTS.VISOR], mitigation: 0.1 },
+    'nvg': { name: 'NVG Goggles', type: ITEM_TYPES.ARMOR, w:2, h:1, armorSlot: ARMOR_SLOTS.HEAD, icon: '👀', value: 1500, slots: [], mitigation: 0.05, nightVision: true },
+    'belt_utility': { name: 'Utility Belt', type: ITEM_TYPES.ARMOR, w:2, h:1, armorSlot: ARMOR_SLOTS.BELT, icon: '➰', value: 100, slots: [], carryBonus: 10 },
+    
+    // Armor Parts
+    'plate_steel': { name: 'Steel Plate', type: ITEM_TYPES.PART, w:2, h:2, partType: PARTS.PLATE, durability: 100, icon: '🛡️', value: 150, mitigation: 0.4 },
+    'visor_glass': { name: 'Visor', type: ITEM_TYPES.PART, w:2, h:1, partType: PARTS.VISOR, durability: 100, icon: '👓', value: 80, mitigation: 0.2 }
+};
+
+const CONTAINER_TYPES = {
+    'spare_backpack': { name: 'Spare Backpack', types: [ITEM_TYPES.MISC, ITEM_TYPES.FOOD] },
+    'stash': { name: 'Hidden Stash', types: [ITEM_TYPES.FOOD, ITEM_TYPES.MED, ITEM_TYPES.MISC] },
+    'medical_crate': { name: 'Medical Crate', types: [ITEM_TYPES.MED] },
+    'armory_rack': { name: 'Armory Rack', types: [ITEM_TYPES.WEAPON, ITEM_TYPES.AMMO, ITEM_TYPES.PART] },
+    'corpse': { name: 'Dead Body', types: [] },
+    'boss_case': { name: 'Warlord Case', types: [ITEM_TYPES.WEAPON, ITEM_TYPES.MISC] }
+};
+
+class Item {
+    constructor(id, condition = 100) {
+        this.id = id;
+        this.def = ITEMS_DB[id];
+        if (!this.def) { console.error(`Missing item: ${id}`); this.def = ITEMS_DB['scrap_metal']; }
+        this.uuid = Math.random().toString(36).substr(2, 9);
+        this.condition = condition;
+        this.parts = {};
+        this.gridX = 0; this.gridY = 0;
+        this.rotated = false;
+        
+        if (this.def.type === ITEM_TYPES.WEAPON) this.barrelCondition = Math.max(10, condition); 
+        if (this.def.type === ITEM_TYPES.PART && this.def.partType === PARTS.MAG) this.ammoCount = 0;
+        // NEW: Initialize ammo stacks
+        if (this.def.type === ITEM_TYPES.AMMO) this.ammoCount = 60;
+    }
+    
+    get w() { return this.rotated ? this.def.h : this.def.w; }
+    get h() { return this.rotated ? this.def.w : this.def.h; }
+}
+
+class Inventory {
+    constructor(cols, rows) {
+        this.cols = cols;
+        this.rows = rows;
+        this.items = [];
+    }
+
+    isFree(x, y, w, h) {
+        if (x < 0 || y < 0 || x + w > this.cols || y + h > this.rows) return false;
+        for (let i of this.items) {
+            if (x < i.gridX + i.w && x + w > i.gridX && y < i.gridY + i.h && y + h > i.gridY) return false;
+        }
+        return true;
+    }
+
+    findSpot(w, h) {
+        for (let y = 0; y <= this.rows - h; y++) {
+            for (let x = 0; x <= this.cols - w; x++) {
+                if (this.isFree(x, y, w, h)) return { x, y };
+            }
+        }
+        return null;
+    }
+
+    add(item) {
+        let spot = this.findSpot(item.w, item.h);
+        if (spot) {
+            item.gridX = spot.x;
+            item.gridY = spot.y;
+            this.items.push(item);
+            return true;
+        }
+        return false;
+    }
+    
+    rotate(item) {
+        this.remove(item);
+        item.rotated = !item.rotated;
+        if (this.isFree(item.gridX, item.gridY, item.w, item.h)) {
+            this.items.push(item);
+            return true;
+        }
+        if (this.add(item)) return true;
+        item.rotated = !item.rotated;
+        this.items.push(item); 
+        return false;
+    }
+
+    remove(item) {
+        const idx = this.items.indexOf(item);
+        if (idx > -1) {
+            this.items.splice(idx, 1);
+            return true;
+        }
+        return false;
+    }
+}
+
+class Entity {
+    constructor(x, y, type) {
+        this.x = x; this.y = y; this.type = type;
+        this.vx = 0; this.vy = 0; this.radius = 12; this.dead = false; this.angle = 0;
+    }
+}
+
+class Crate extends Entity {
+    constructor(x, y, subType) {
+        super(x, y, 'crate');
+        this.inventory = new Inventory(8, 6); 
+        this.radius = 15;
+        this.subType = subType;
+    }
+}
+
+class Player extends Entity {
+    constructor(x, y) {
+        super(x, y, 'player');
+        this.speed = 150;
+        this.stats = { hp: 100, maxHp: 100, hunger: 100, maxHunger: 100, thirst: 100, maxThirst: 100, stamina: 100, maxStamina: 100, blood: 5000, maxBlood: 5000, temp: 37 };
+        this.inventory = new Inventory(8, 8); // Backpack
+        this.gear = { head: null, body: null, belt: null };
+        this.equippedWeapon = null;
+        this.bleeding = false;
+        this.flashlight = false;
+    }
+    
+    tick(dt) {
+        this.stats.hunger -= 0.5 * dt;
+        this.stats.thirst -= 1.0 * dt;
+        if (this.stats.hunger <= 0 || this.stats.thirst <= 0) this.stats.hp -= 2 * dt;
+        if (this.bleeding) { this.stats.blood -= 10 * dt; this.stats.hp -= 1 * dt; }
+        if (this.stats.stamina < 100) this.stats.stamina += 5 * dt;
+        if (this.stats.hp <= 0 || this.stats.blood <= 0) Game.exitRaid(false);
+        Object.keys(this.stats).forEach(k => { if(k.startsWith('max')) return; let max = this.stats['max'+k.charAt(0).toUpperCase()+k.slice(1)]; if(max) this.stats[k] = clamp(this.stats[k], 0, max); });
+    }
+
+    takeDamage(amount) {
+        const isHead = Math.random() < 0.15;
+        let mitigation = 0;
+        let armorItem = isHead ? this.gear.head : this.gear.body;
+
+        if (armorItem) {
+            mitigation += (armorItem.def.mitigation || 0);
+            Object.values(armorItem.parts).forEach(p => {
+                const effective = (p.condition / 100);
+                mitigation += (p.def.mitigation || 0) * effective;
+                p.condition -= amount * 0.5;
+                if(p.condition < 0) p.condition = 0;
+            });
+        }
+        if (mitigation > 0.9) mitigation = 0.9;
+        const finalDamage = amount * (1 - mitigation);
+        this.stats.hp -= finalDamage;
+        if (finalDamage > 5) Log.add(`Hit in ${isHead?'Head':'Body'}! Armor absorbed ${Math.floor(mitigation*100)}%`, "danger");
+        if (!armorItem && Math.random() < 0.3) this.bleeding = true;
+    }
+}
+
+class Scav extends Entity {
+    constructor(x, y, isBoss = false) {
+        super(x, y, isBoss ? 'boss' : 'scav');
+        this.hp = isBoss ? 200 : 80;
+        this.state = 'patrol';
+        this.speed = 60;
+        this.chaseSpeed = 90;
+        this.detectionRange = 250;
+        this.attackRange = 200;
+        this.shootTimer = 0;
+        this.isBoss = isBoss;
+        
+        this.inventory = new Inventory(6,6);
+        if(isBoss) {
+            const rpk = new Item('rifle_rpk');
+            Game.populateWeapon(rpk); // Fill RPK
+            rpk.parts[PARTS.MAG] = new Item('mag_drum'); // Override mag with drum
+            this.equippedWeapon = rpk;
+            this.inventory.add(new Item('gold_watch'));
+            this.inventory.add(new Item('medkit'));
+        } else {
+            if(Math.random()<0.5) this.equippedWeapon = new Item('pistol_1911', randInt(30,60));
+            else this.equippedWeapon = new Item('rifle_ak', randInt(20,40)); 
+            Game.populateWeapon(this.equippedWeapon); // Fill scav weapon
+            if(Math.random()<0.5) this.inventory.add(new Item('bandage'));
+        }
+        
+        // Add loose ammo
+        if (this.equippedWeapon) {
+            const mag = this.equippedWeapon.parts[PARTS.MAG];
+            if (mag && mag.def.ammoType) {
+                const ammo = new Item(mag.def.ammoType);
+                ammo.ammoCount = randInt(5, 20);
+                this.inventory.add(ammo);
+            }
+        }
+        
+        this.patrolAngle = Math.random() * 6.28;
+        this.patrolTimer = 0;
+        this.lastTargetPos = null;
+    }
+    
+    updateAI(dt, entities) {
+        if(this.dead) return;
+        
+        let target = null;
+        let minDist = this.detectionRange;
+        
+        if (Game.inRaid && !Game.player.dead) {
+            const d = dist(this.x, this.y, Game.player.x, Game.player.y);
+            // Flashlight makes player visible from further
+            const effectiveRange = Game.player.flashlight ? this.detectionRange * 1.5 : this.detectionRange;
+            if (d < effectiveRange && Game.checkLOS(this.x, this.y, Game.player.x, Game.player.y)) {
+                target = Game.player; minDist = d;
+            }
+        }
+        entities.forEach(e => {
+            if (e.type === 'zombie' && !e.dead) {
+                const d = dist(this.x, this.y, e.x, e.y);
+                if (d < minDist && Game.checkLOS(this.x, this.y, e.x, e.y)) {
+                    target = e; minDist = d;
+                }
+            }
+        });
+        
+        if (target) {
+            this.state = 'combat';
+            this.lastTargetPos = {x: target.x, y: target.y};
+            this.angle = Math.atan2(target.y - this.y, target.x - this.x);
+            
+            if (minDist < 100) {
+                 this.x -= Math.cos(this.angle) * (this.speed * 0.8) * dt; 
+                 this.y -= Math.sin(this.angle) * (this.speed * 0.8) * dt;
+                 this.shootTimer -= dt;
+                 if (this.shootTimer <= 0) {
+                    this.shoot(target);
+                    this.shootTimer = (this.equippedWeapon.def.fireRate / 1000) * 1.5; 
+                }
+            } else if (minDist > this.attackRange) {
+                this.x += Math.cos(this.angle) * this.chaseSpeed * dt;
+                this.y += Math.sin(this.angle) * this.chaseSpeed * dt;
+            } else {
+                this.shootTimer -= dt;
+                if (this.shootTimer <= 0) {
+                    this.shoot(target);
+                    this.shootTimer = (this.equippedWeapon.def.fireRate / 1000) * 1.5; 
+                }
+            }
+        } else if (this.lastTargetPos) {
+            const d = dist(this.x, this.y, this.lastTargetPos.x, this.lastTargetPos.y);
+            if (d > 20) {
+                const ang = Math.atan2(this.lastTargetPos.y - this.y, this.lastTargetPos.x - this.x);
+                this.x += Math.cos(ang) * this.speed * dt;
+                this.y += Math.sin(ang) * this.speed * dt;
+            } else {
+                this.lastTargetPos = null;
+                this.state = 'patrol';
+            }
+        } else {
+            this.patrolTimer -= dt;
+            if (this.patrolTimer <= 0) {
+                this.patrolAngle += rand(-1, 1);
+                this.patrolTimer = rand(2, 5);
+            }
+            const nextX = this.x + Math.cos(this.patrolAngle) * this.speed * dt;
+            const nextY = this.y + Math.sin(this.patrolAngle) * this.speed * dt;
+            if (Game.isWall(nextX, nextY)) this.patrolAngle += 3.14;
+            else { this.x = nextX; this.y = nextY; }
+        }
+        
+        if (Game.isWall(this.x, this.y)) {
+             this.x -= Math.cos(this.angle)*5;
+             this.y -= Math.sin(this.angle)*5;
+        }
+    }
+    
+    shoot(target) {
+        if (!this.equippedWeapon) return;
+        const spread = this.isBoss ? 0.05 : 0.15;
+        const angle = this.angle + rand(-spread, spread);
+        Game.bullets.push({
+            x: this.x, y: this.y, 
+            angle: angle, 
+            damage: this.equippedWeapon.def.damage, 
+            life: 1, 
+            owner: 'scav',
+            light: true
+        });
+        Game.makeNoise(this.x, this.y, 400);
+    }
+}
+
+class Zombie extends Entity {
+    constructor(x, y, isPatroller) {
+        super(x, y, 'zombie');
+        this.hp = 50; this.state = 'idle'; 
+        this.speed = isPatroller ? 30 : 90; 
+        this.chaseSpeed = 95; this.isPatroller = isPatroller;
+        this.detectionRange = 80; this.attackRange = 25; this.attackCooldown = 0;
+        this.patrolAngle = Math.random() * 6.28; this.patrolTimer = 0;
+        this.spawnTimer = 3.0;
+    }
+    updateAI(dt, player, entities) {
+        if (this.dead) return;
+        if (this.spawnTimer > 0) { this.spawnTimer -= dt; return; }
+        
+        let target = null;
+        let minDist = this.detectionRange;
+        
+        const dPlayer = dist(this.x, this.y, player.x, player.y);
+        const visRange = (player.flashlight) ? this.detectionRange * 2 : this.detectionRange;
+        
+        if (dPlayer < visRange && Game.checkLOS(this.x, this.y, player.x, player.y)) {
+            target = player; minDist = dPlayer;
+        }
+        
+        entities.forEach(e => {
+            if ((e.type === 'scav' || e.type === 'boss') && !e.dead) {
+                const d = dist(this.x, this.y, e.x, e.y);
+                if (d < minDist && Game.checkLOS(this.x, this.y, e.x, e.y)) {
+                    target = e; minDist = d;
+                }
+            }
+        });
+
+        if (target) {
+            this.state = 'chase';
+            const ang = Math.atan2(target.y - this.y, target.x - this.x);
+            const vx = Math.cos(ang) * this.chaseSpeed;
+            const vy = Math.sin(ang) * this.chaseSpeed;
+            
+            if (minDist < this.attackRange) {
+                if (this.attackCooldown <= 0) {
+                    if (target === player) player.takeDamage(10);
+                    else { target.hp -= 10; if(target.hp<=0) Game.killEntity(target); }
+                    this.attackCooldown = 1.5;
+                } else {
+                    this.attackCooldown -= dt;
+                }
+            }
+            
+            const nextX = this.x + vx * dt; const nextY = this.y + vy * dt;
+            if (!Game.isWall(nextX, this.y)) this.x = nextX;
+            if (!Game.isWall(this.x, nextY)) this.y = nextY;
+            
+        } else if (this.isPatroller) {
+            this.patrolTimer -= dt;
+            if (this.patrolTimer <= 0) { this.patrolAngle += rand(-1, 1); this.patrolTimer = rand(2, 5); }
+            const vx = Math.cos(this.patrolAngle) * this.speed;
+            const vy = Math.sin(this.patrolAngle) * this.speed;
+            const nextX = this.x + vx * dt; const nextY = this.y + vy * dt;
+            if (Game.isWall(nextX, this.y)) { this.patrolAngle += 3.14; } else this.x = nextX;
+            if (Game.isWall(this.x, nextY)) { this.patrolAngle += 3.14; } else this.y = nextY;
+        } else {
+            const nextX = this.x + this.vx * dt; const nextY = this.y + this.vy * dt;
+            if (Game.isWall(nextX, this.y)) this.vx *= -1; else this.x = nextX;
+            if (Game.isWall(this.x, nextY)) this.vy *= -1; else this.y = nextY;
+            this.vx *= 0.95; this.vy *= 0.95;
+        }
+    }
+}
+
+const Game = {
+    canvas: null, ctx: null, lastTime: 0,
+    player: null, map: [], entities: [], bullets: [], loot: [], camera: { x: 0, y: 0 },
+    inRaid: false, paused: false,
+    stash: new Inventory(10, 20), money: 1000,
+    extractZone: { x: 0, y: 0, r: 80 },
+    
+    // Systems
+    dayTime: 0, // 0-1 cycle
+    actionTimer: 0, actionTotal: 0, actionCb: null,
+
+    init() {
+        this.canvas = $('gameCanvas'); this.ctx = this.canvas.getContext('2d');
+        this.resize(); window.addEventListener('resize', () => this.resize());
+        Input.init();
+        if (localStorage.getItem('scav_extract_v12')) this.loadGame(); else this.createProfile();
+        this.generateWorld(); 
+        requestAnimationFrame(t => this.loop(t));
+    },
+
+    createProfile() {
+        this.money = 2000;
+        this.stash = new Inventory(10, 20);
+        this.stash.add(new Item('rifle_m4'));
+        this.stash.add(new Item('mag_556'));
+        this.stash.add(new Item('ammo_556'));
+        this.stash.add(new Item('canned_beans'));
+        this.stash.add(new Item('medkit'));
+        this.stash.add(new Item('vest_police'));
+        
+        // Initial Stash M4: Fully loaded
+        const m4 = this.stash.items[0];
+        m4.parts[PARTS.RECEIVER] = new Item('m4_receiver');
+        m4.parts[PARTS.BOLT] = new Item('m4_bolt');
+        m4.parts[PARTS.TRIGGER] = new Item('m4_trigger');
+        m4.parts[PARTS.SPRING] = new Item('m4_spring');
+        m4.parts[PARTS.STOCK] = new Item('m4_stock');
+        
+        this.player = new Player(0,0); 
+        this.saveGame();
+    },
+
+    deploy() {
+        if (this.player.hp <= 0) this.player = new Player(0,0);
+        this.generateWorld();
+        this.player.x = TILE_SIZE * 5; this.player.y = TILE_SIZE * 5;
+        this.extractZone = { x: (MAP_SIZE - 10) * TILE_SIZE, y: (MAP_SIZE - 10) * TILE_SIZE, r: 100 };
+        this.player.stats.hp = 100;
+        this.player.stats.blood = 5000;
+        this.player.bleeding = false;
+        this.inRaid = true;
+        this.dayTime = 0.3; // Start afternoon
+        $('main-menu').style.display = 'none';
+        $('ui-layer').style.display = 'flex';
+        Log.add("DEPLOYED. Good luck.", "good");
+    },
+
+    exitRaid(survived) {
+        this.inRaid = false;
+        $('ui-layer').style.display = 'none';
+        $('menu-overlay').style.display = 'none';
+        $('loot-menu').style.display = 'none';
+        this.cancelAction();
+        
+        if (survived) {
+            alert("EXTRACTION SUCCESSFUL");
+        } else {
+            alert("MIA - Gear Lost");
+            this.player.inventory.items = [];
+            this.player.gear = { head: null, body: null, belt: null };
+            this.player.equippedWeapon = null;
+        }
+        
+        this.saveGame();
+        Hideout.open();
+    },
+
+    generateWorld() {
+        for(let y=0; y<MAP_SIZE; y++) {
+            this.map[y] = [];
+            for(let x=0; x<MAP_SIZE; x++) {
+                this.map[y][x] = TILES.GRASS;
+                if (Math.random() < 0.15) this.map[y][x] = TILES.TREE; 
+            }
+        }
+        this.entities = []; 
+        
+        for(let i=0; i<8; i++) {
+            let cx = randInt(10, MAP_SIZE-10); let cy = randInt(10, MAP_SIZE-10);
+            let w = randInt(5, 10); let h = randInt(5, 10);
+            for(let y=cy-h; y<cy+h; y++) for(let x=cx-w; x<cx+w; x++) {
+                if (y>=0 && y<MAP_SIZE && x>=0 && x<MAP_SIZE) {
+                    this.map[y][x] = TILES.FLOOR;
+                    if(Math.random()<0.008) this.spawnCrate(x*TILE_SIZE, y*TILE_SIZE); 
+                }
+            }
+            for(let y=cy-h-1; y<=cy+h; y++) for(let x=cx-w-1; x<=cx+w; x++) {
+                if (y>=0 && y<MAP_SIZE && x>=0 && x<MAP_SIZE && this.map[y][x] !== TILES.FLOOR) {
+                    let touches = [[0,1],[0,-1],[1,0],[-1,0]].some(n=> this.map[y+n[0]] && this.map[y+n[0]][x+n[1]] === TILES.FLOOR);
+                    if (touches && Math.random()>0.2) this.map[y][x] = TILES.WALL;
+                }
+            }
+            // Town: Mostly Scavs
+            const numScavs = randInt(1, 4);
+            for(let s=0; s<numScavs; s++) {
+                this.entities.push(new Scav(cx*TILE_SIZE + rand(-50,50), cy*TILE_SIZE + rand(-50,50)));
+            }
+            if (Math.random() < 0.2) {
+                this.entities.push(new Zombie(cx*TILE_SIZE + rand(-100,100), cy*TILE_SIZE + rand(-100,100), false));
+            }
+        }
+        
+        // Wilderness: Mostly Zombies
+        for(let k=0; k<40; k++) {
+            let rx = randInt(0, MAP_SIZE), ry = randInt(0, MAP_SIZE);
+            if (this.map[ry][rx] === TILES.TREE) {
+                if(Math.random() < 0.1) this.entities.push(new Scav(rx*TILE_SIZE, ry*TILE_SIZE));
+                else this.entities.push(new Zombie(rx*TILE_SIZE, ry*TILE_SIZE, true));
+            }
+        }
+        
+        // BOSS: The Warden in center
+        this.entities.push(new Scav((MAP_SIZE*TILE_SIZE)/2, (MAP_SIZE*TILE_SIZE)/2, true));
+
+        for(let k=0; k<20; k++) {
+            let rx = randInt(2, MAP_SIZE-2), ry = randInt(2, MAP_SIZE-2);
+            if (this.map[ry][rx] === TILES.TREE || this.map[ry][rx] === TILES.GRASS) {
+                 this.spawnCrate(rx*TILE_SIZE, ry*TILE_SIZE);
+            }
+        }
+    },
+    
+    spawnCrate(x, y) {
+        const types = Object.keys(CONTAINER_TYPES).filter(t => t !== 'corpse' && t !== 'boss_case');
+        const type = types[randInt(0, types.length)];
+        const crate = new Crate(x+20, y+20, type);
+        const count = randInt(0, 8); 
+        for(let i=0; i<count; i++) {
+            const item = this.genLootItem(CONTAINER_TYPES[type].types);
+            if(item) crate.inventory.add(item);
+        }
+        this.entities.push(crate);
+    },
+    
+    killEntity(e) {
+        e.dead = true;
+        if (e.type === 'scav' || e.type === 'boss') {
+            const corpse = new Crate(e.x, e.y, e.type==='boss' ? 'boss_case' : 'corpse');
+            if (e.equippedWeapon) corpse.inventory.add(e.equippedWeapon);
+            e.inventory.items.forEach(i => corpse.inventory.add(i));
+            this.entities.push(corpse);
+            Log.add(e.type==='boss' ? "WARLORD ELIMINATED" : "Scavenger neutralized", "good");
+        }
+    },
+    
+    startAction(duration, text, callback) {
+        if(this.actionTimer > 0) return;
+        this.actionTimer = duration;
+        this.actionTotal = duration;
+        this.actionCb = callback;
+        $('action-label').innerText = text;
+        $('action-label').style.display = 'block';
+        $('action-bar-container').style.display = 'block';
+    },
+    
+    cancelAction() {
+        if(this.actionTimer > 0) {
+            this.actionTimer = 0;
+            this.actionCb = null;
+            $('action-label').style.display = 'none';
+            $('action-bar-container').style.display = 'none';
+            Log.add("Action cancelled", "warn");
+        }
+    },
+
+    reload() {
+        const w = this.player.equippedWeapon;
+        if(!w) return;
+        
+        // Skip if weapon doesn't use magazines (e.g. melee or potential future internal mag guns)
+        if (w.def.slots && !w.def.slots.includes(PARTS.MAG)) return;
+
+        const inv = this.player.inventory;
+        // Find fresh mag
+        const compatibleMags = inv.items.filter(i => 
+            i.def.type === ITEM_TYPES.PART && 
+            i.def.partType === PARTS.MAG && 
+            i.def.family === w.def.family && 
+            i.ammoCount > 0
+        ).sort((a,b) => b.ammoCount - a.ammoCount);
+        
+        if (compatibleMags.length === 0) {
+             Log.add("No ammo!", "warn");
+             return;
+        }
+        
+        const newMag = compatibleMags[0];
+        const oldMag = w.parts[PARTS.MAG];
+        
+        inv.remove(newMag); // Make space
+        
+        if (oldMag) {
+            // Try putting old mag in inventory
+            if (!inv.add(oldMag)) {
+                // Inventory full, drop to ground
+                const drop = new Crate(this.player.x, this.player.y, 'spare_backpack');
+                drop.inventory.add(oldMag); 
+                this.entities.push(drop);
+                Log.add("Inv full. Mag dropped!", "warn");
+            }
+        }
+        
+        w.parts[PARTS.MAG] = newMag;
+        this.makeNoise(this.player.x, this.player.y, 100); 
+        Log.add("Reloaded.", "good");
+    },
+    
+    makeNoise(x, y, r) {
+        this.entities.forEach(e => {
+            if(dist(x, y, e.x, e.y) < r && !e.dead) {
+                if(e.type === 'zombie') e.state = 'chase';
+                if(e.type === 'scav' || e.type === 'boss') e.lastTargetPos = {x, y};
+            }
+        });
+    },
+
+    checkLOS(x1, y1, x2, y2) {
+        const d = dist(x1, y1, x2, y2);
+        const steps = Math.ceil(d / 20);
+        const dx = (x2 - x1) / steps, dy = (y2 - y1) / steps;
+        for (let i = 0; i < steps; i++) {
+            if (Game.isWall(x1 + dx * i, y1 + dy * i)) return false;
+        }
+        return true;
+    },
+    
+    genLootItem(allowedTypes) {
+        let keys = Object.keys(ITEMS_DB).filter(k => ITEMS_DB[k].type !== ITEM_TYPES.PART);
+        if (allowedTypes) {
+            keys = keys.filter(k => allowedTypes.includes(ITEMS_DB[k].type) || (allowedTypes.includes(ITEM_TYPES.MED) && k === 'bandage')); 
+        }
+        if(keys.length === 0) return null;
+        const k = keys[randInt(0, keys.length)];
+        if ((ITEMS_DB[k].value > 200) && Math.random() > 0.1) return null; 
+        const item = new Item(k, randInt(20, 100));
+        
+        // Randomize ammo stack size
+        if (item.def.type === ITEM_TYPES.AMMO) {
+            item.ammoCount = randInt(10, 60);
+        }
+
+        if (item.def.type === ITEM_TYPES.WEAPON) {
+            // Randomly populate parts for loot weapons, so they aren't always empty
+            this.populateWeapon(item, true); // True = random missing parts
+        }
+        if (item.def.type === ITEM_TYPES.ARMOR && item.def.slots.includes(PARTS.PLATE) && Math.random() < 0.3) {
+            item.parts[PARTS.PLATE] = new Item('plate_steel', randInt(20, 80));
+        }
+        return item;
+    },
+    
+    // NEW HELPER: Populates a weapon with default parts
+    populateWeapon(item, randomMissing = false) {
+        if (item.def.type !== ITEM_TYPES.WEAPON) return;
+        
+        // Ensure slots exists
+        if (!item.def.slots) return;
+
+        item.def.slots.forEach(slot => {
+            // If randomMissing is true, skip some parts randomly (e.g. 30% chance missing)
+            if (randomMissing && Math.random() < 0.3) return;
+
+            // Find a part in DB that matches family and slot
+            const partId = Object.keys(ITEMS_DB).find(k => 
+                ITEMS_DB[k].type === ITEM_TYPES.PART &&
+                ITEMS_DB[k].partType === slot &&
+                ITEMS_DB[k].family === item.def.family
+            );
+            
+            if (partId) {
+                item.parts[slot] = new Item(partId, randInt(50, 100));
+            }
+        });
+    },
+
+    getCombinedCond(item) {
+        if (item.def.type === ITEM_TYPES.WEAPON || item.def.type === ITEM_TYPES.ARMOR) {
+            let sum = (item.def.type === ITEM_TYPES.WEAPON) ? item.barrelCondition : item.condition;
+            let c = 1;
+            Object.values(item.parts).forEach(p => { sum+=p.condition; c++; });
+            return sum/c;
+        }
+        return item.condition;
+    },
+
+    saveGame() {
+        const data = { stash: this.stash.items, money: this.money, player: this.player };
+        localStorage.setItem('scav_extract_v12', JSON.stringify(data));
+    },
+    loadGame() {
+        try {
+            const d = JSON.parse(localStorage.getItem('scav_extract_v12'));
+            this.money = d.money;
+            this.stash = new Inventory(10, 20);
+            d.stash.forEach(i => this.stash.add(this.hydrate(i)));
+            
+            this.player = new Player(0,0);
+            Object.assign(this.player, d.player);
+            const oldInv = d.player.inventory.items || [];
+            this.player.inventory = new Inventory(8, 8);
+            oldInv.forEach(i => {
+                const item = this.hydrate(i);
+                item.gridX = i.gridX; item.gridY = i.gridY;
+                this.player.inventory.items.push(item);
+            });
+            
+            if(d.player.gear.head) this.player.gear.head = this.hydrate(d.player.gear.head);
+            if(d.player.gear.body) this.player.gear.body = this.hydrate(d.player.gear.body);
+            if(d.player.gear.belt) this.player.gear.belt = this.hydrate(d.player.gear.belt);
+
+            if (this.player.equippedWeapon) this.player.equippedWeapon = this.player.inventory.items.find(i=>i.uuid === this.player.equippedWeapon.uuid);
+        } catch(e) { console.error(e); this.createProfile(); }
+    },
+    hydrate(i) {
+        if(!i) return null;
+        const item = new Item(i.id);
+        Object.assign(item, i);
+        if (item.parts) {
+            for(let k in item.parts) { item.parts[k] = Object.assign(new Item(item.parts[k].id), item.parts[k]); }
+        }
+        return item;
+    },
+    resetGame() { localStorage.removeItem('scav_extract_v12'); location.reload(); },
+
+    resize() { this.canvas.width = window.innerWidth; this.canvas.height = window.innerHeight; },
+    
+    loop(t) {
+        const dt = Math.min((t - this.lastTime) / 1000, 0.1); this.lastTime = t;
+        if (!this.paused && this.inRaid) this.update(dt);
+        else if (!this.inRaid) {
+            this.camera.x = 2000 + Math.cos(t/3000)*100; this.camera.y = 2000 + Math.sin(t/4000)*100;
+        }
+        this.render();
+        requestAnimationFrame(t => this.loop(t));
+    },
+    
+    update(dt) {
+        // Time
+        this.dayTime += dt * 0.0005; // Slow cycle
+        if(this.dayTime > 1) this.dayTime = 0;
+        
+        UI.updateHUD(); // Called every frame
+
+        // Action Timer
+        if (this.actionTimer > 0) {
+            this.actionTimer -= dt;
+            $('action-bar-fill').style.width = ((this.actionTotal - this.actionTimer) / this.actionTotal * 100) + '%';
+            if (this.actionTimer <= 0) {
+                if (this.actionCb) this.actionCb();
+                // Reset UI on success
+                this.actionTimer = 0;
+                this.actionCb = null;
+                $('action-label').style.display = 'none';
+                $('action-bar-container').style.display = 'none';
+            }
+        }
+
+        // Player
+        let dx=0, dy=0;
+        if(Input.keys['w']) dy-=1; if(Input.keys['s']) dy+=1; if(Input.keys['a']) dx-=1; if(Input.keys['d']) dx+=1;
+        if(dx||dy) {
+            this.cancelAction(); // Move cancels action
+            const l = Math.hypot(dx,dy); dx/=l; dy/=l;
+            const nx = this.player.x + dx*this.player.speed*dt; const ny = this.player.y + dy*this.player.speed*dt;
+            if(!this.isWall(nx, this.player.y)) this.player.x = nx;
+            if(!this.isWall(this.player.x, ny)) this.player.y = ny;
+            this.player.stats.stamina -= 2*dt;
+        }
+        this.player.angle = Math.atan2(Input.mouse.y - (this.player.y - this.camera.y), Input.mouse.x - (this.player.x - this.camera.x));
+        this.player.tick(dt);
+        this.camera.x = this.player.x - this.canvas.width/2; this.camera.y = this.player.y - this.canvas.height/2;
+
+        if (dist(this.player.x, this.player.y, this.extractZone.x, this.extractZone.y) < this.extractZone.r) {
+            $('extract-msg').style.display = 'block';
+            if (Input.keys['f']) this.exitRaid(true);
+        } else {
+            $('extract-msg').style.display = 'none';
+        }
+
+        this.entities.forEach(e => {
+            if(e.type === 'zombie') e.updateAI(dt, this.player, this.entities);
+            if(e.type === 'scav' || e.type === 'boss') e.updateAI(dt, this.entities);
+        });
+        
+        for (let i = this.bullets.length - 1; i >= 0; i--) {
+            let b = this.bullets[i]; b.life -= dt;
+            b.x += Math.cos(b.angle)*900*dt; b.y += Math.sin(b.angle)*900*dt;
+            if (this.isWall(b.x, b.y)) b.life = 0;
+            
+            if (b.life > 0) {
+                if (b.owner !== 'player' && dist(b.x, b.y, this.player.x, this.player.y) < 12) {
+                    this.player.takeDamage(b.damage);
+                    b.life = 0;
+                }
+                for(let e of this.entities) {
+                    if (e.type!=='crate' && !e.dead && dist(b.x, b.y, e.x, e.y) < e.radius) {
+                        if ((b.owner === 'scav' || b.owner === 'boss') && (e.type === 'scav' || e.type === 'boss')) continue; 
+                        e.hp -= b.damage; 
+                        if(e.hp<=0) Game.killEntity(e);
+                        b.life = 0; break;
+                    }
+                }
+            }
+            if(b.life<=0) this.bullets.splice(i,1);
+        }
+        this.entities = this.entities.filter(e => !e.dead);
+    },
+    
+    isWall(x, y) {
+        const tx = Math.floor(x / TILE_SIZE), ty = Math.floor(y / TILE_SIZE);
+        return (ty>=0 && ty<MAP_SIZE && tx>=0 && tx<MAP_SIZE) && this.map[ty][tx] === TILES.WALL;
+    },
+    
+    render() {
+        const ctx = this.ctx;
+        ctx.fillStyle = '#0f110f'; ctx.fillRect(0, 0, this.canvas.width, this.canvas.height);
+        ctx.save(); ctx.translate(-this.camera.x, -this.camera.y);
+        
+        const sc = Math.floor(this.camera.x/TILE_SIZE), ec = sc + (this.canvas.width/TILE_SIZE)+1;
+        const sr = Math.floor(this.camera.y/TILE_SIZE), er = sr + (this.canvas.height/TILE_SIZE)+1;
+        for (let y=sr; y<=er; y++) for (let x=sc; x<=ec; x++) {
+            if (y>=0 && y<MAP_SIZE && x>=0 && x<MAP_SIZE) {
+                const t = this.map[y][x], tx=x*TILE_SIZE, ty=y*TILE_SIZE;
+                if(t===TILES.GRASS) { ctx.fillStyle = ((x+y)%7===0)?'#1a221a':'#141814'; ctx.fillRect(tx,ty,TILE_SIZE,TILE_SIZE); }
+                else if(t===TILES.FLOOR) { ctx.fillStyle='#333'; ctx.fillRect(tx,ty,TILE_SIZE,TILE_SIZE); ctx.strokeStyle='#3a3a3a'; ctx.strokeRect(tx,ty,TILE_SIZE,TILE_SIZE); }
+                else if(t===TILES.WALL) { ctx.fillStyle='#555'; ctx.fillRect(tx,ty,TILE_SIZE,TILE_SIZE); ctx.fillStyle='#222'; ctx.fillRect(tx+35,ty,5,TILE_SIZE); ctx.fillRect(tx,ty+35,TILE_SIZE,5); }
+            }
+        }
+        for (let y=sr; y<=er; y++) for (let x=sc; x<=ec; x++) if(y>=0&&y<MAP_SIZE&&x>=0&&x<MAP_SIZE && this.map[y][x]===TILES.TREE) {
+             const tx=x*TILE_SIZE+20, ty=y*TILE_SIZE+20;
+             ctx.fillStyle='rgba(0,0,0,0.4)'; ctx.beginPath(); ctx.arc(tx+5,ty+5,12,0,6.28); ctx.fill();
+             ctx.fillStyle='#1b4d1b'; ctx.beginPath(); ctx.arc(tx,ty-5,12,0,6.28); ctx.fill();
+        }
+        
+        if (this.inRaid) {
+            ctx.save();
+            ctx.fillStyle = `rgba(0, 183, 255, ${0.2 + Math.sin(Date.now()/500)*0.1})`;
+            ctx.beginPath(); ctx.arc(this.extractZone.x, this.extractZone.y, this.extractZone.r, 0, 6.28); ctx.fill();
+            ctx.strokeStyle = '#00b7ff'; ctx.lineWidth = 2; ctx.stroke();
+            ctx.fillStyle = '#fff'; ctx.font = "12px monospace"; ctx.textAlign="center";
+            ctx.fillText("LZ EXTRACT", this.extractZone.x, this.extractZone.y);
+            ctx.restore();
+        }
+
+        this.entities.forEach(e => {
+            ctx.fillStyle='rgba(0,0,0,0.5)'; ctx.beginPath(); ctx.arc(e.x+3,e.y+3,e.radius,0,6.28); ctx.fill();
+            if(e.type==='zombie') { ctx.fillStyle='#556b2f'; ctx.beginPath(); ctx.arc(e.x,e.y,e.radius,0,6.28); ctx.fill(); }
+            if(e.type==='scav') { ctx.fillStyle='#8b4513'; ctx.beginPath(); ctx.arc(e.x,e.y,e.radius,0,6.28); ctx.fill(); }
+            if(e.type==='boss') { ctx.fillStyle='#333'; ctx.beginPath(); ctx.arc(e.x,e.y,e.radius*1.2,0,6.28); ctx.fill(); ctx.strokeStyle='#d94343'; ctx.lineWidth=2; ctx.stroke(); }
+            if(e.type==='crate') {
+                const s = e.subType;
+                if(s==='corpse') {
+                    ctx.fillStyle='#553333'; 
+                    ctx.beginPath(); ctx.arc(e.x, e.y, 10, 0, 6.28); ctx.fill();
+                } else if(s==='boss_case') {
+                    ctx.fillStyle='#111'; ctx.fillRect(e.x-12,e.y-8,24,16); 
+                    ctx.strokeStyle='#ffd700'; ctx.lineWidth=2; ctx.strokeRect(e.x-12,e.y-8,24,16);
+                } else if(s==='medical_crate') {
+                    ctx.fillStyle='#eee'; ctx.fillRect(e.x-10,e.y-10,20,20);
+                    ctx.fillStyle='#d94343'; ctx.fillRect(e.x-3,e.y-8,6,16); ctx.fillRect(e.x-8,e.y-3,16,6); 
+                } else if(s==='armory_rack') {
+                    ctx.fillStyle='#2e3b2e'; ctx.fillRect(e.x-12,e.y-6,24,12);
+                    ctx.strokeStyle='#556b2f'; ctx.lineWidth=1; ctx.strokeRect(e.x-12,e.y-6,24,12);
+                } else if(s==='spare_backpack') {
+                    ctx.fillStyle='#8b4513'; 
+                    ctx.beginPath(); ctx.ellipse(e.x, e.y, 10, 12, 0, 0, 6.28); ctx.fill(); 
+                } else { // Stash
+                    ctx.fillStyle='#654321'; ctx.fillRect(e.x-10,e.y-10,20,20); 
+                    ctx.strokeStyle='#3e2723'; ctx.strokeRect(e.x-10,e.y-10,20,20);
+                }
+            }
+        });
+        
+        ctx.fillStyle='#ffdf80'; this.bullets.forEach(b => {
+            ctx.beginPath(); ctx.moveTo(b.x,b.y); ctx.lineTo(b.x-Math.cos(b.angle)*10, b.y-Math.sin(b.angle)*10); ctx.stroke();
+        });
+
+        if (this.inRaid) {
+            ctx.save(); ctx.translate(this.player.x, this.player.y); ctx.rotate(this.player.angle);
+            ctx.fillStyle='#388e3c'; ctx.beginPath(); ctx.arc(0,0,12,0,6.28); ctx.fill();
+            if(this.player.gear.head) { ctx.fillStyle='#444'; ctx.beginPath(); ctx.arc(0,0,9,0,6.28); ctx.fill(); }
+            else { ctx.fillStyle='#2e7d32'; ctx.beginPath(); ctx.arc(0,0,8,0,6.28); ctx.fill(); }
+            if(this.player.equippedWeapon) { ctx.fillStyle='#111'; ctx.fillRect(5,2,28,4); }
+            else { ctx.fillStyle='#81c784'; ctx.beginPath(); ctx.arc(10,8,4,0,6.28); ctx.fill(); ctx.beginPath(); ctx.arc(10,-8,4,0,6.28); ctx.fill(); }
+            ctx.restore();
+        }
+        ctx.restore();
+        
+        // --- LIGHTING SYSTEM ---
+        if (this.inRaid) {
+            let darkness = 0;
+            if(this.dayTime > 0.6) darkness = (this.dayTime - 0.6) * 2.5; // Sunset -> Night
+            if(this.dayTime < 0.2) darkness = (0.2 - this.dayTime) * 2.5; // Night -> Sunrise
+            darkness = clamp(darkness, 0, 0.9);
+
+            // NVG Check
+            let hasNVG = this.player.gear.head && this.player.gear.head.def.nightVision;
+            if (hasNVG) {
+                ctx.fillStyle = `rgba(0, 255, 0, 0.1)`; // Green Tint
+                ctx.fillRect(0,0,this.canvas.width, this.canvas.height);
+                darkness = 0.1; // See well
+            }
+
+            if (darkness > 0) {
+                ctx.save();
+                ctx.fillStyle = `rgba(0, 0, 0, ${darkness})`;
+                ctx.fillRect(0, 0, this.canvas.width, this.canvas.height);
+                
+                // Cut holes for lights
+                ctx.globalCompositeOperation = 'destination-out';
+                
+                // Player Flashlight
+                if (this.player.flashlight) {
+                    ctx.save();
+                    ctx.translate(this.canvas.width/2, this.canvas.height/2);
+                    ctx.rotate(this.player.angle);
+                    ctx.beginPath();
+                    ctx.moveTo(0,0);
+                    ctx.arc(0,0, 300, -0.5, 0.5);
+                    ctx.lineTo(0,0);
+                    ctx.fillStyle = 'rgba(0,0,0,1)';
+                    ctx.fill();
+                    ctx.restore();
+                }
+
+                // Bullet Flashes
+                this.bullets.forEach(b => {
+                    if(b.light) {
+                        const sx = b.x - this.camera.x;
+                        const sy = b.y - this.camera.y;
+                        ctx.beginPath(); ctx.arc(sx, sy, 30, 0, 6.28); ctx.fill();
+                    }
+                });
+
+                ctx.restore();
+            }
+        }
+    },
+    
+    shoot() {
+        const w = this.player.equippedWeapon;
+        if (!w) {
+            // Melee
+            this.entities.forEach(e => {
+                if((e.type==='zombie' || e.type==='scav') && dist(this.player.x,this.player.y,e.x,e.y)<40 && !e.dead) { 
+                    e.hp-=15; if(e.hp<=0) Game.killEntity(e); 
+                    e.x+=Math.cos(Math.atan2(e.y-this.player.y,e.x-this.player.x))*25; 
+                }
+            }); return;
+        }
+        
+        // Mag check
+        if (w.def.slots.includes(PARTS.MAG)) {
+            if(!w.parts[PARTS.MAG] || w.parts[PARTS.MAG].ammoCount<=0) { Log.add("Click.", "system"); return; }
+        }
+        
+        // Dynamic Parts Check (Fixes 1911 bug)
+        const missing = w.def.slots.find(s => !w.parts[s]);
+        if (missing) { Log.add(`Weapon non-functional (${missing})`, "warn"); return; }
+
+        // Jamming Logic
+        let jamChance = 0;
+        if (w.parts[PARTS.RECEIVER]) jamChance = (100 - w.parts[PARTS.RECEIVER].condition) / 400;
+        else jamChance = (100 - w.barrelCondition) / 400; // Fallback for simple guns
+
+        if(Math.random() < jamChance) { Log.add("JAMMED!", "danger"); return; }
+        
+        if(w.parts[PARTS.MAG]) w.parts[PARTS.MAG].ammoCount--;
+        
+        const acc = w.def.baseAccuracy * (w.barrelCondition/100), spr = (1-acc)*0.4;
+        this.bullets.push({
+            x:this.player.x, y:this.player.y, 
+            angle: this.player.angle+rand(-spr,spr), 
+            damage:w.def.damage, life:1, 
+            owner: 'player',
+            light: true // Muzzle flash
+        });
+        w.barrelCondition-=0.1; Object.values(w.parts).forEach(p=>p.condition-=0.2);
+        Game.makeNoise(this.player.x, this.player.y, 600);
+    },
+    
+    interact() {
+        let f = false;
+        this.entities.forEach(e => {
+            if(e.type==='crate' && dist(this.player.x, this.player.y, e.x, e.y) < 40) {
+                LootUI.open(e); f=true;
+            }
+        });
+        if(!f) Log.add("Nothing to loot.", "system");
+    }
+};
+
+const UI = {
+    selectedItem: null,
+    
+    updateHUD() {
+        if (!Game.player) return;
+        const s = Game.player.stats;
+        $('bar-hp').style.width = s.hp + '%';
+        $('bar-hunger').style.width = s.hunger + '%';
+        $('bar-thirst').style.width = s.thirst + '%';
+        $('bar-stamina').style.width = s.stamina + '%';
+
+        // Warnings
+        $('bar-hunger').style.backgroundColor = s.hunger < 25 && (Date.now()%1000<500) ? '#ff5555' : '#d4a017';
+        $('bar-thirst').style.backgroundColor = s.thirst < 25 && (Date.now()%1000<500) ? '#ff5555' : '#3b8bb9';
+        
+        if (Math.random() < 0.005) {
+             if (s.hunger < 15) Log.add("Starving...", "danger");
+             if (s.thirst < 15) Log.add("Dehydrated...", "danger");
+        }
+    },
+
+    renderGrid(container, inventory, context = 'default') {
+        container.innerHTML = '';
+        container.className = 'inv-grid';
+        container.style.width = (inventory.cols * SLOT_SIZE) + 'px';
+        container.style.height = (inventory.rows * SLOT_SIZE) + 'px';
+        
+        inventory.items.forEach(item => {
+            const el = document.createElement('div');
+            el.className = `grid-item type-${item.def.type}`;
+            el.style.left = (item.gridX * SLOT_SIZE) + 'px';
+            el.style.top = (item.gridY * SLOT_SIZE) + 'px';
+            el.style.width = (item.w * SLOT_SIZE) + 'px';
+            el.style.height = (item.h * SLOT_SIZE) + 'px';
+            
+            if (item === this.selectedItem) el.classList.add('selected');
+            
+            let extraInfo = '';
+            if(item.def.type===ITEM_TYPES.WEAPON || item.def.type===ITEM_TYPES.ARMOR) extraInfo = `${Math.floor(Game.getCombinedCond(item))}%`;
+            if(item.def.type===ITEM_TYPES.PART && item.def.partType===PARTS.MAG) extraInfo = `${item.ammoCount}/${item.def.capacity}`;
+            if(item.def.type===ITEM_TYPES.AMMO) extraInfo = `${item.ammoCount}`;
+
+            el.innerHTML = `
+                <div class="grid-item-icon" style="${item.rotated?'transform:rotate(90deg)':''}">${item.def.icon}</div>
+                <div class="grid-item-name">${item.def.name}</div>
+                <div class="grid-item-meta">${extraInfo}</div>
+            `;
+            
+            el.onclick = (e) => {
+                e.stopPropagation();
+                if (context === 'loot-container') LootUI.transferToPlayer(item);
+                else if (context === 'loot-player') LootUI.transferToContainer(item);
+                else if (context === 'shop') { this.selectItem(item); }
+                else { this.selectItem(item); }
+            };
+            
+            container.appendChild(el);
+        });
+    },
+    
+    renderCharacterSlots(container, inHideout) {
+        container.innerHTML = '';
+        ['head', 'body', 'belt'].forEach(slot => {
+            const item = Game.player.gear[slot];
+            const div = document.createElement('div');
+            div.className = item ? 'gear-slot equipped' : 'gear-slot';
+            div.innerHTML = `<span class="gear-label">${slot}</span>` + 
+                            (item ? `<span class="gear-name">${item.def.icon} ${item.def.name}<br>${Math.floor(Game.getCombinedCond(item))}%</span>` : `<span style="color:#444">Empty</span>`);
+            div.onclick = () => {
+                if (item) {
+                    if (Game.player.inventory.add(item)) {
+                        Game.player.gear[slot] = null;
+                        if(inHideout) Hideout.render(); else UI.renderInventory();
+                    } else Log.add("No space!", "warn");
+                }
+            };
+            container.appendChild(div);
+        });
+    },
+
+    renderInventory() {
+        this.renderGrid($('ingame-backpack-grid'), Game.player.inventory);
+        this.renderCharacterSlots($('gear-slots-ingame'), false);
+        const w = Game.player.equippedWeapon;
+        let wInfo = 'Unarmed';
+        if (w) {
+            const mag = w.parts[PARTS.MAG];
+            wInfo = `${w.def.name} | ${mag ? mag.ammoCount + '/' + mag.def.capacity : 'NO MAG'}`;
+        }
+        $('char-weapon-stats').innerText = wInfo;
+        
+        if(Game.player) {
+            $('val-temp').innerText = Game.player.stats.temp.toFixed(1) + '°C';
+            $('val-blood').innerText = (Game.player.stats.blood/1000).toFixed(1) + 'L';
+            $('bar-hp').style.width = Game.player.stats.hp + '%';
+            $('bar-hunger').style.width = Game.player.stats.hunger + '%';
+            $('bar-thirst').style.width = Game.player.stats.thirst + '%';
+            $('bar-stamina').style.width = Game.player.stats.stamina + '%';
+        }
+    },
+    
+    selectItem(item) {
+        this.selectedItem = item; this.renderInventory();
+        const det = $('item-details-content'), act = $('context-actions'), av = $('assembly-view');
+        av.style.display = 'none'; act.innerHTML = '';
+        if(!item) { det.innerHTML='Select item...'; return; }
+        
+        const cond = Math.floor(Game.getCombinedCond(item));
+        det.innerHTML = `<h3>${item.def.name}</h3><p>Val: §${item.def.value}</p><p>Cond: ${cond}%</p>`;
+
+        // ROTATE BUTTON
+        if (Game.player.inventory.items.includes(item) || Game.stash.items.includes(item)) {
+            const rotBtn = document.createElement('button'); rotBtn.innerText = "ROTATE";
+            rotBtn.onclick = () => {
+                const inv = Game.player.inventory.items.includes(item) ? Game.player.inventory : Game.stash;
+                if (!inv.rotate(item)) Log.add("Cannot rotate here!", "warn");
+                UI.renderInventory();
+                if(Game.inMenu) Hideout.render();
+            };
+            act.appendChild(rotBtn);
+        }
+
+        // Actions
+        if (item.def.type === ITEM_TYPES.WEAPON) {
+            const btn = document.createElement('button'); btn.innerText = (Game.player.equippedWeapon === item) ? "UNEQUIP" : "EQUIP";
+            btn.onclick = () => { Game.player.equippedWeapon = (Game.player.equippedWeapon===item)?null:item; this.renderInventory(); };
+            act.appendChild(btn);
+            av.style.display='flex'; this.renderAssembly(item);
+        } 
+        else if (item.def.type === ITEM_TYPES.PART && item.def.partType === PARTS.MAG) {
+            // Mag Actions
+            det.innerHTML += `<p>Ammo: ${item.ammoCount}/${item.def.capacity}</p>`;
+            
+            // Refill
+            const refillBtn = document.createElement('button'); refillBtn.innerText = "REFILL";
+            refillBtn.onclick = () => {
+                const needed = item.def.capacity - item.ammoCount;
+                if (needed <= 0) { Log.add("Mag full.", "system"); return; }
+
+                // Find compatible loose ammo stacks
+                const ammoStacks = Game.player.inventory.items.filter(i => i.def.type === ITEM_TYPES.AMMO && i.id === item.def.ammoType);
+                
+                if (ammoStacks.length === 0) {
+                    Log.add("No compatible loose ammo.", "warn");
+                    return;
+                }
+
+                let totalAdded = 0;
+                for (let stack of ammoStacks) {
+                    if (totalAdded >= needed) break;
+                    
+                    const transfer = Math.min(needed - totalAdded, stack.ammoCount);
+                    item.ammoCount += transfer;
+                    stack.ammoCount -= transfer;
+                    totalAdded += transfer;
+                    
+                    if (stack.ammoCount <= 0) {
+                        Game.player.inventory.remove(stack);
+                    }
+                }
+                
+                Log.add(`Loaded ${totalAdded} rounds.`, "good");
+                this.selectItem(item); // Refresh
+            };
+            act.appendChild(refillBtn);
+
+            // Unload
+            const unloadBtn = document.createElement('button'); unloadBtn.innerText = "UNLOAD";
+            unloadBtn.onclick = () => {
+                if(item.ammoCount > 0) {
+                    const ammo = new Item(item.def.ammoType);
+                    ammo.ammoCount = item.ammoCount; // Create stack with exact amount
+                    
+                    if(Game.player.inventory.add(ammo)) {
+                        item.ammoCount = 0;
+                        Log.add("Ammo unloaded.", "good");
+                        this.selectItem(item);
+                    } else Log.add("No space for ammo.", "warn");
+                }
+            };
+            act.appendChild(unloadBtn);
+        }
+        else if (item.def.type === ITEM_TYPES.ARMOR) {
+             const btn = document.createElement('button'); btn.innerText = "EQUIP";
+             btn.onclick = () => {
+                 if(Game.player.gear[item.def.armorSlot]) Log.add(`Slot occupied`, "warn");
+                 else { Game.player.gear[item.def.armorSlot]=item; Game.player.inventory.remove(item); this.selectItem(null); }
+             };
+             act.appendChild(btn);
+             av.style.display='flex'; this.renderAssembly(item);
+        } else if (item.def.type === ITEM_TYPES.FOOD || item.def.type === ITEM_TYPES.MED) {
+            const btn = document.createElement('button'); btn.innerText = "USE";
+            btn.onclick = () => { 
+                const time = item.def.useTime || 1;
+                Game.startAction(time, `Using ${item.def.name}...`, () => {
+                    if(item.def.hunger) Game.player.stats.hunger+=item.def.hunger; 
+                    if(item.def.thirst) Game.player.stats.thirst+=item.def.thirst;
+                    if(item.def.heal) Game.player.stats.hp+=item.def.heal;
+                    Game.player.inventory.remove(item); this.selectItem(null); 
+                });
+            };
+            act.appendChild(btn);
+        }
+        
+        const drop = document.createElement('button'); drop.innerText="DROP";
+        drop.onclick = () => { Game.player.inventory.remove(item); this.selectItem(null); }; 
+        act.appendChild(drop);
+    },
+    
+    renderAssembly(w) {
+        const c = $('parts-container'); c.innerHTML='';
+        if (w.def.slots) w.def.slots.forEach(s => {
+            const p = w.parts[s], d = document.createElement('div');
+            if(p) { d.className='part-slot occupied'; d.innerText=`${p.def.name} (${Math.floor(p.condition)}%)`; d.onclick=()=>{if(Game.player.inventory.add(p)) {delete w.parts[s]; this.selectItem(w);} else Log.add("No space","warn");}; }
+            else { d.className='part-slot'; d.innerText=`[${s}]`; d.onclick=()=>{ 
+                const cand = Game.player.inventory.items.find(i=>i.def.type===ITEM_TYPES.PART && i.def.partType===s);
+                if(cand) { w.parts[s]=cand; Game.player.inventory.remove(cand); this.selectItem(w); }
+            };}
+            c.appendChild(d);
+        });
+    }
+};
+
+const LootUI = {
+    currentCrate: null,
+    open(crate) {
+        this.currentCrate = crate;
+        Game.paused = true;
+        $('loot-menu').style.display = 'flex';
+        $('loot-title').innerText = CONTAINER_TYPES[crate.subType].name.toUpperCase();
+        this.render();
+    },
+    close() {
+        this.currentCrate = null;
+        Game.paused = false;
+        $('loot-menu').style.display = 'none';
+    },
+    render() {
+        if(!this.currentCrate) return;
+        UI.renderGrid($('loot-container-grid'), this.currentCrate.inventory, 'loot-container');
+        UI.renderGrid($('loot-backpack-grid'), Game.player.inventory, 'loot-player');
+    },
+    transferToPlayer(item) {
+        if(Game.player.inventory.add(item)) {
+            this.currentCrate.inventory.remove(item);
+            this.render();
+        } else Log.add("Backpack full!", "warn");
+    },
+    transferToContainer(item) {
+        if(this.currentCrate.inventory.add(item)) {
+            Game.player.inventory.remove(item);
+            if(Game.player.equippedWeapon === item) Game.player.equippedWeapon = null;
+            this.render();
+        } else Log.add("Container full!", "warn");
+    },
+    takeAll() {
+        [...this.currentCrate.inventory.items].forEach(item => this.transferToPlayer(item));
+    }
+};
+
+const Hideout = {
+    isShop: false,
+    open() {
+        $('main-menu').style.display = 'none'; $('ui-layer').style.display = 'none';
+        $('hideout-menu').style.display = 'flex'; Game.inMenu = true; this.render();
+    },
+    close() {
+        $('hideout-menu').style.display = 'none'; $('main-menu').style.display = 'flex';
+        Game.inMenu = true; Game.saveGame();
+    },
+    toggleShop() { this.isShop = !this.isShop; $('btn-shop-toggle').innerText = this.isShop ? "CLOSE SHOP" : "OPEN SHOP"; this.render(); },
+    render() {
+        $('stash-money').innerText = Game.money;
+        UI.renderGrid($('stash-grid-container'), Game.stash, this.isShop ? 'shop' : 'stash');
+        UI.renderGrid($('hideout-backpack-container'), Game.player.inventory, this.isShop ? 'shop' : 'stash-transfer');
+        UI.renderCharacterSlots($('hideout-gear-slots'), true);
+        
+        // Transfer logic override
+        const stashItems = $('stash-grid-container').children;
+        const packItems = $('hideout-backpack-container').children;
+        
+        Array.from(stashItems).forEach((el, idx) => {
+            el.onclick = () => {
+                const item = Game.stash.items[idx];
+                if(this.isShop) { /* Buy Logic */ } 
+                else if(Game.player.inventory.add(item)) { Game.stash.remove(item); this.render(); }
+            };
+        });
+        Array.from(packItems).forEach((el, idx) => {
+            el.onclick = () => {
+                const item = Game.player.inventory.items[idx];
+                if(this.isShop) { Game.money += Math.floor(item.def.value*0.5); Game.player.inventory.remove(item); this.render(); } 
+                else if(Game.stash.add(item)) { Game.player.inventory.remove(item); this.render(); }
+            };
+        });
+        
+        if (this.isShop) {
+            // Shop Overlay
+            const stashC = $('stash-grid-container');
+            stashC.innerHTML = `
+                <div style="color:#888; text-align:center; padding:10px;">
+                    <button onclick="Hideout.sellJunk()" style="border-color:#d94343; color:#d94343; width:100%; margin-bottom:10px;">SELL ALL JUNK</button>
+                    Click backpack items to SELL individual.<br>Buy below:
+                </div>
+            `;
+            Object.keys(ITEMS_DB).forEach(k => {
+                const def = ITEMS_DB[k];
+                const d = document.createElement('div');
+                d.className = 'item-slot shop-item';
+                d.innerHTML = `${def.icon} ${def.name} - §${def.value}`;
+                d.onclick = () => {
+                    if(Game.money >= def.value) {
+                        const newItem = new Item(k);
+                        // Auto populate if weapon
+                        Game.populateWeapon(newItem);
+                        
+                        if(Game.stash.add(newItem)) { Game.money -= def.value; this.render(); }
+                        else alert("Stash Full");
+                    }
+                };
+                stashC.appendChild(d);
+            });
+        }
+    },
+    sellJunk() {
+        let earned = 0;
+        for(let i = Game.player.inventory.items.length - 1; i >= 0; i--) {
+            const item = Game.player.inventory.items[i];
+            if(item.def.type === ITEM_TYPES.MISC) {
+                earned += Math.floor(item.def.value * 0.5);
+                Game.player.inventory.remove(item);
+            }
+        }
+        Game.money += earned;
+        if(earned > 0) Log.add(`Sold junk for §${earned}`, "good");
+        this.render();
+    }
+};
+
+const Input = {
+    keys: {}, mouse: {x:0,y:0},
+    init() {
+        window.onkeydown = e => { 
+            this.keys[e.key.toLowerCase()] = true; 
+            if(e.key.toLowerCase()==='e') Game.interact();
+            if(e.key.toLowerCase()==='r') Game.reload(); // FIXED
+            if(e.key.toLowerCase()==='l') Game.player.flashlight = !Game.player.flashlight;
+            if(e.key==='Tab') { e.preventDefault(); if(Game.inRaid) { Game.paused=!Game.paused; $('menu-overlay').style.display=Game.paused?'flex':'none'; if(Game.paused)UI.renderInventory(); } }
+        };
+        window.onkeyup = e => this.keys[e.key.toLowerCase()] = false;
+        window.onmousemove = e => { this.mouse.x = e.clientX; this.mouse.y = e.clientY; };
+        window.onmousedown = () => { if(Game.inRaid && !Game.paused) Game.shoot(); };
+    }
+};
+
+const Log = { add(m,c){ const d=document.createElement('div'); d.className=`log-entry ${c}`; d.innerText=`> ${m}`; $('log-container').appendChild(d); $('log-container').scrollTop=999; }};
+window.onload = () => Game.init();
+</script>
+</body>
+</html>
