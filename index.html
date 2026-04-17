@@ -2,11 +2,209 @@
 <html lang="en">
 <head>
   <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>Game Hub</title>
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Press+Start+2P&family=Exo+2:wght@400;600;700&display=swap" rel="stylesheet">
-  <link rel="stylesheet" href="style.css">
+  <style>
+    :root {
+      --bg:      #0a0a0f;
+      --surface: #12121a;
+      --card-bg: #16161f;
+      --border:  #2a2a3a;
+      --accent:  #00e5ff;
+      --accent2: #ff2d78;
+      --text:    #e8e8f0;
+      --muted:   #6b6b80;
+      --glow:    0 0 16px rgba(0, 229, 255, 0.25);
+      --radius:  12px;
+    }
+
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+    body {
+      font-family: 'Exo 2', sans-serif;
+      background: var(--bg);
+      color: var(--text);
+      min-height: 100vh;
+      overflow-x: hidden;
+    }
+
+    header {
+      position: relative;
+      text-align: center;
+      padding: 56px 24px 48px;
+      background: linear-gradient(180deg, #0d0d18 0%, var(--bg) 100%);
+      border-bottom: 1px solid var(--border);
+      overflow: hidden;
+    }
+    header::before {
+      content: '';
+      position: absolute;
+      inset: 0;
+      background:
+        radial-gradient(ellipse 80% 60% at 50% -10%, rgba(0,229,255,0.08) 0%, transparent 70%),
+        radial-gradient(ellipse 40% 40% at 20% 110%, rgba(255,45,120,0.06) 0%, transparent 70%);
+      pointer-events: none;
+    }
+    .scanline-overlay {
+      position: absolute;
+      inset: 0;
+      background: repeating-linear-gradient(0deg, transparent, transparent 3px, rgba(0,0,0,0.07) 3px, rgba(0,0,0,0.07) 4px);
+      pointer-events: none;
+      z-index: 1;
+    }
+    .header-inner { position: relative; z-index: 2; }
+
+    h1 {
+      font-family: 'Press Start 2P', monospace;
+      font-size: clamp(1.2rem, 4vw, 2.2rem);
+      color: var(--accent);
+      text-shadow: 0 0 20px rgba(0,229,255,0.6), 0 0 40px rgba(0,229,255,0.25);
+      letter-spacing: 2px;
+      line-height: 1.5;
+    }
+    .subtitle {
+      margin-top: 14px;
+      font-size: 0.9rem;
+      color: var(--muted);
+      letter-spacing: 1px;
+      text-transform: uppercase;
+      font-weight: 600;
+    }
+
+    main {
+      max-width: 1100px;
+      margin: 0 auto;
+      padding: 48px 24px 64px;
+    }
+    section + section { margin-top: 56px; }
+
+    .section-title {
+      font-family: 'Press Start 2P', monospace;
+      font-size: 0.7rem;
+      color: var(--muted);
+      text-transform: uppercase;
+      letter-spacing: 3px;
+      margin-bottom: 24px;
+    }
+    .section-title .accent { color: var(--accent2); }
+
+    .featured-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));
+      gap: 20px;
+    }
+
+    .games-grid {
+      display: grid;
+      grid-template-columns: repeat(3, 1fr);
+      gap: 20px;
+    }
+    @media (max-width: 680px) { .games-grid { grid-template-columns: repeat(2, 1fr); } }
+    @media (max-width: 440px) { .games-grid { grid-template-columns: 1fr; } }
+
+    .card {
+      background: var(--card-bg);
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
+      overflow: hidden;
+      cursor: pointer;
+      transition: transform 0.18s ease, border-color 0.18s ease, box-shadow 0.18s ease;
+      position: relative;
+      display: block;
+    }
+    .card::after {
+      content: '';
+      position: absolute;
+      inset: 0;
+      border-radius: var(--radius);
+      opacity: 0;
+      background: linear-gradient(135deg, rgba(0,229,255,0.06), transparent 60%);
+      transition: opacity 0.18s ease;
+      pointer-events: none;
+    }
+    .card:hover { transform: translateY(-4px) scale(1.02); border-color: var(--accent); box-shadow: var(--glow); }
+    .card:hover::after { opacity: 1; }
+    .card:active { transform: translateY(-1px); }
+
+    .card-thumb {
+      width: 100%;
+      height: 130px;
+      object-fit: cover;
+      display: block;
+      background: var(--surface);
+    }
+    .card-thumb-placeholder {
+      width: 100%;
+      height: 130px;
+      background: linear-gradient(135deg, #1a1a28, #12121e);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 2rem;
+    }
+    .featured-grid .card-thumb,
+    .featured-grid .card-thumb-placeholder { height: 150px; }
+
+    .card-body { padding: 12px 14px 14px; }
+    .card-title {
+      font-size: 0.88rem;
+      font-weight: 700;
+      color: var(--text);
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+    }
+
+    .featured-badge {
+      position: absolute;
+      top: 8px;
+      right: 8px;
+      background: var(--accent2);
+      color: #fff;
+      font-size: 0.55rem;
+      font-family: 'Press Start 2P', monospace;
+      padding: 3px 6px;
+      border-radius: 4px;
+      z-index: 2;
+    }
+
+    .pagination {
+      display: flex;
+      justify-content: center;
+      align-items: center;
+      gap: 8px;
+      margin-top: 36px;
+      flex-wrap: wrap;
+    }
+    .page-btn {
+      font-family: 'Press Start 2P', monospace;
+      font-size: 0.55rem;
+      background: var(--card-bg);
+      color: var(--muted);
+      border: 1px solid var(--border);
+      border-radius: 6px;
+      padding: 9px 12px;
+      cursor: pointer;
+      transition: background 0.15s, color 0.15s, border-color 0.15s, box-shadow 0.15s;
+      min-width: 36px;
+      text-align: center;
+      line-height: 1;
+    }
+    .page-btn:hover { background: var(--surface); color: var(--text); border-color: var(--accent); }
+    .page-btn.active { background: var(--accent); color: #000; border-color: var(--accent); box-shadow: 0 0 12px rgba(0,229,255,0.4); }
+    .page-btn:disabled { opacity: 0.3; cursor: default; pointer-events: none; }
+
+    .empty-state {
+      text-align: center;
+      color: var(--muted);
+      font-size: 0.9rem;
+      padding: 40px 0;
+      grid-column: 1 / -1;
+    }
+  </style>
 </head>
 <body>
 
@@ -31,6 +229,125 @@
     </section>
   </main>
 
-  <script src="script.js"></script>
+  <script>
+    const GAMES_PER_PAGE = 6;
+    let allGames = [];
+    let currentPage = 1;
+
+    function makePlaceholder() {
+      const el = document.createElement("div");
+      el.className = "card-thumb-placeholder";
+      el.textContent = "🎮";
+      return el;
+    }
+
+    function createCard(game, isFeatured) {
+      const card = document.createElement("div");
+      card.className = "card";
+      card.setAttribute("role", "button");
+      card.setAttribute("tabindex", "0");
+
+      if (isFeatured) {
+        const badge = document.createElement("span");
+        badge.className = "featured-badge";
+        badge.textContent = "★ featured";
+        card.appendChild(badge);
+      }
+
+      if (game.image) {
+        const img = document.createElement("img");
+        img.className = "card-thumb";
+        img.src = game.image;
+        img.alt = game.name;
+        img.onerror = function() { this.replaceWith(makePlaceholder()); };
+        card.appendChild(img);
+      } else {
+        card.appendChild(makePlaceholder());
+      }
+
+      const body = document.createElement("div");
+      body.className = "card-body";
+      const title = document.createElement("div");
+      title.className = "card-title";
+      title.textContent = game.name;
+      body.appendChild(title);
+      card.appendChild(body);
+
+      const go = () => { window.location.href = game.file; };
+      card.addEventListener("click", go);
+      card.addEventListener("keydown", (e) => { if (e.key === "Enter" || e.key === " ") go(); });
+
+      return card;
+    }
+
+    function renderPage(page) {
+      currentPage = page;
+      const container = document.getElementById("games");
+      container.innerHTML = "";
+      const slice = allGames.slice((page - 1) * GAMES_PER_PAGE, page * GAMES_PER_PAGE);
+      if (slice.length === 0) {
+        container.innerHTML = '<p class="empty-state">No games found.</p>';
+      } else {
+        slice.forEach(g => container.appendChild(createCard(g, false)));
+      }
+      renderPagination();
+    }
+
+    function renderPagination() {
+      const container = document.getElementById("pagination");
+      container.innerHTML = "";
+      const total = Math.ceil(allGames.length / GAMES_PER_PAGE);
+      if (total <= 1) return;
+
+      const prev = document.createElement("button");
+      prev.className = "page-btn";
+      prev.textContent = "◀";
+      prev.disabled = currentPage === 1;
+      prev.addEventListener("click", () => renderPage(currentPage - 1));
+      container.appendChild(prev);
+
+      for (let i = 1; i <= total; i++) {
+        const btn = document.createElement("button");
+        btn.className = "page-btn" + (i === currentPage ? " active" : "");
+        btn.textContent = i;
+        btn.addEventListener("click", (function(n){ return () => renderPage(n); })(i));
+        container.appendChild(btn);
+      }
+
+      const next = document.createElement("button");
+      next.className = "page-btn";
+      next.textContent = "▶";
+      next.disabled = currentPage === total;
+      next.addEventListener("click", () => renderPage(currentPage + 1));
+      container.appendChild(next);
+    }
+
+    async function loadGames() {
+      try {
+        const res = await fetch("games.json");
+        if (!res.ok) throw new Error("HTTP " + res.status);
+        const games = await res.json();
+        allGames = games;
+
+        const featuredContainer = document.getElementById("featured");
+        const featured = games.filter(g => g.featured);
+        if (featured.length === 0) {
+          document.getElementById("featured-section").style.display = "none";
+        } else {
+          featured.forEach(g => featuredContainer.appendChild(createCard(g, true)));
+        }
+
+        renderPage(1);
+      } catch (err) {
+        console.error("Failed to load games:", err);
+        document.getElementById("games").innerHTML =
+          '<p class="empty-state">⚠ Could not load games. Check that games.json exists and is valid JSON.</p>';
+        document.getElementById("featured-section").style.display = "none";
+      }
+    }
+
+    loadGames();
+  </script>
+
 </body>
 </html>
