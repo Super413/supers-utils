@@ -27,7 +27,7 @@
     "name": "Chronomancer",
     "file": "games/chronomancer.html",
     "image": "images/chronomancer.png",
-    "featured": false
+    "featured": true
   },
   {
     "name": "Citysim",
@@ -45,7 +45,7 @@
     "name": "Evolution Sim",
     "file": "games/evolution sim.html",
     "image": "images/evolution sim.png",
-    "featured": false
+    "featured": true
   },
   {
     "name": "Kinda Risk",
@@ -63,7 +63,7 @@
     "name": "Logistics Corp Rts",
     "file": "games/logistics-corp-rts.html",
     "image": "images/logistics-corp-rts.png",
-    "featured": false
+    "featured": true
   },
   {
     "name": "Metroflow",
