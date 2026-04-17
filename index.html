@@ -3,21 +3,33 @@
 <head>
   <meta charset="UTF-8">
   <title>Game Hub</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Press+Start+2P&family=Exo+2:wght@400;600;700&display=swap" rel="stylesheet">
   <link rel="stylesheet" href="style.css">
 </head>
 <body>
 
-  <h1>🎮 Game Hub</h1>
+  <header>
+    <div class="scanline-overlay"></div>
+    <div class="header-inner">
+      <h1>🎮 Game Hub</h1>
+      <p class="subtitle">Pick your game. Start playing.</p>
+    </div>
+  </header>
 
-  <section>
-    <h2>⭐ Featured Games</h2>
-    <div id="featured" class="grid"></div>
-  </section>
+  <main>
+    <section id="featured-section">
+      <h2 class="section-title"><span class="accent">⭐</span> Featured</h2>
+      <div id="featured" class="featured-grid"></div>
+    </section>
 
-  <section>
-    <h2>All Games</h2>
-    <div id="games" class="grid"></div>
-  </section>
+    <section id="all-games-section">
+      <h2 class="section-title">All Games</h2>
+      <div id="games" class="games-grid"></div>
+      <div id="pagination" class="pagination"></div>
+    </section>
+  </main>
 
   <script src="script.js"></script>
 </body>
