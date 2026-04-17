@@ -1,0 +1,9 @@
+title: Game Hub
+description: Pick your game. Start playing.
+
+# Don't process these folders with Jekyll templating
+exclude:
+  - README.md
+
+# Markdown renderer (not needed here, but good practice)
+markdown: kramdown

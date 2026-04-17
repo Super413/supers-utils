@@ -1,0 +1,24 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+
+  <!-- page.title comes from each page's front matter; site.title comes from _config.yml -->
+  <title>{{ page.title | default: site.title }}</title>
+
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Press+Start+2P&family=Exo+2:wght@400;600;700&display=swap" rel="stylesheet">
+
+  <!-- site.baseurl is set in _config.yml; leave it blank for GitHub Pages project sites -->
+  <link rel="stylesheet" href="{{ site.baseurl }}/assets/css/style.css">
+</head>
+<body>
+
+  <!-- content is replaced by whatever page uses this layout -->
+  {{ content }}
+
+  <script src="{{ site.baseurl }}/assets/js/script.js"></script>
+</body>
+</html>
