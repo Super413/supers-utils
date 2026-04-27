@@ -80,7 +80,7 @@ const UI = {
 };
 
 const GAME = {
-    money: 2000,
+    money: 2500,
     lives: 20,
     wave: 0,
     state: 'BUILD', 
@@ -903,7 +903,7 @@ function startWave() {
 function spawnEnemy() {
     let hp = 50 + (GAME.wave * 40) + Math.pow(GAME.wave, 2);
     let speed = 0.8 + Math.min(GAME.wave * 0.05, 1.5);
-    let reward = 10 + Math.floor(GAME.wave * 2);
+    let reward = 50 + Math.floor(GAME.wave * 2);
     GAME.enemies.push(new Enemy(hp, speed, reward));
 }
 

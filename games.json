@@ -6,7 +6,7 @@
     "featured": false
   },
   {
-    "name": "Aerocommand Take 2",
+    "name": "Aerocommand 2: the worse sequel",
     "file": "games/aerocommand take 2.html",
     "image": "images/aerocommand take 2.png",
     "featured": false
@@ -57,7 +57,7 @@
     "name": "Logi RTS",
     "file": "games/logi RTS.html",
     "image": "images/logi RTS.png",
-    "featured": false
+    "featured": true
   },
   {
     "name": "Logistics Corp Rts",
