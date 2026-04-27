@@ -15,7 +15,7 @@
     "name": "Aerodefense",
     "file": "games/aerodefense.html",
     "image": "images/aerodefense.png",
-    "featured": false
+    "featured": true
   },
   {
     "name": "Another Zombie Survival",
@@ -57,7 +57,7 @@
     "name": "Logi RTS",
     "file": "games/logi RTS.html",
     "image": "images/logi RTS.png",
-    "featured": true
+    "featured": false
   },
   {
     "name": "Logistics Corp Rts",
