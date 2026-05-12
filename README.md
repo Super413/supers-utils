@@ -9,7 +9,7 @@ Access a helpful little portal [**here**](https://super413.github.io/supers-util
 <br>If forking to add your own scripts, run ```generate.js``` to create a ```generated.json``` file, this acts as the search index it will be based off.
 <br> Each game item also has an image associated with it in images/, be sure it matches the filename for it to appear, etc ```gamey_game.html``` should have an image called ```gamey_game.png```.
 <br> Check out some other games I couldn't (won't) make work with this!
-<br><br> [**Aerocommand**](https://super413.github.io/aerocommand/): The hit prequel to Aerocommand: the sequel. Probably the most developed game, roughly 2000 lines of code for the main script loop. View source code [**here**](https://github.com/Super413/aerocommand)
+<br><br> [**Aerocommand**](https://super413.github.io/aerocommand/): The hit prequel to Aerocommand: the sequel. Probably the most developed game, roughly 4000 lines of code for the main script loop. Includes advanced AI, multiple maps, detailed mechanics, and missile physics. View source code [**here**](https://github.com/Super413/aerocommand)
 <br><br> [**Bootleg Helldivers**](https://super413.github.io/codex-testing-1/): I asked the ai to make helldivers and it did somewhat good. Not exactly fun, polished, or balanced, but it works.
 
 
